@@ -1,19 +1,24 @@
 /**
  * Environment variable validation.
  *
- * Importing this module throws at startup if required variables are missing,
- * giving a clear error instead of an opaque Prisma connection failure later.
+ * During `next build` (static analysis / page-data collection), env vars
+ * like DATABASE_URL may not exist yet.  Validation is deferred to the
+ * first runtime access so the build can finish cleanly on Vercel.
  */
+
+const isBuildPhase =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.NEXT_PHASE === "phase-export";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) {
+  if (!value && !isBuildPhase) {
     throw new Error(
       `Missing required environment variable: ${name}. ` +
         "Copy .env.example to .env and fill in the values.",
     );
   }
-  return value;
+  return value ?? "";
 }
 
 function optionalEnv(name: string): string | undefined {

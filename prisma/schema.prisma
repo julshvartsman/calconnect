@@ -1,0 +1,150 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  provider
+  admin
+}
+
+enum ProviderOrgType {
+  office
+  student_org
+  external_partner
+}
+
+model Resource {
+  id                    String        @id @default(cuid())
+  name                  String
+  shortDescription      String
+  fullDescription       String?
+  eligibilityText       String
+  isAppointmentRequired Boolean       @default(false)
+  walkInAllowed         Boolean       @default(true)
+  whatToBring           String[]
+  requirementsLink      String?
+  websiteUrl            String?
+  officialUrl           String?
+  hoursJson             Json?
+  summaryJson           Json?
+  faqJson               Json?
+  isActive              Boolean       @default(true)
+  lastScrapedAt         DateTime?
+  lastSummarizedAt      DateTime?
+  lastVerifiedAt        DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  categoryId            String
+  locationId            String?
+  providerId            String?
+  category              Category      @relation(fields: [categoryId], references: [id])
+  location              Location?     @relation(fields: [locationId], references: [id])
+  provider              Provider?     @relation(fields: [providerId], references: [id])
+  resourceTags          ResourceTag[]
+
+  @@index([name])
+  @@index([categoryId])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  resources Resource[]
+}
+
+model Tag {
+  id           String        @id @default(cuid())
+  name         String
+  type         String
+  resourceTags ResourceTag[]
+
+  @@unique([name, type])
+}
+
+model ResourceTag {
+  resourceId String
+  tagId      String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, tagId])
+}
+
+model Location {
+  id           String     @id @default(cuid())
+  buildingName String?
+  room         String?
+  address      String
+  latitude     Float?
+  longitude    Float?
+  notes        String?
+  resources    Resource[]
+}
+
+model Provider {
+  id            String          @id @default(cuid())
+  name          String
+  contactEmail  String?
+  campusOrgType ProviderOrgType @default(office)
+  resources     Resource[]
+}
+
+model User {
+  id          String      @id @default(cuid())
+  campusSsoId String?     @unique
+  email       String      @unique
+  name        String?
+  role        UserRole    @default(student)
+  profile     UserProfile?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model UserProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  profileJson  Json?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SearchCache {
+  id            String   @id @default(cuid())
+  queryKey      String   @unique
+  resultJson    Json
+  sourceCount   Int      @default(0)
+  scrapedAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([queryKey])
+  @@index([expiresAt])
+}
+
+model ScrapedPage {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  domain      String
+  title       String
+  category    String
+  bodyText    String
+  keywords    String[]
+  scrapedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([domain])
+}

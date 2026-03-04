@@ -1,0 +1,27 @@
+"use client";
+
+/**
+ * Error boundary for the campus map page.
+ */
+export default function MapError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  return (
+    <main className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-20 text-center md:px-6">
+      <h2 className="text-2xl font-bold text-slate-900">Could not load the map</h2>
+      <p className="text-sm text-slate-600">
+        {error.message || "An unexpected error occurred while loading map data."}
+      </p>
+      <button
+        onClick={reset}
+        className="rounded-lg bg-[var(--berkeley-blue)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--berkeley-blue-700)]"
+      >
+        Try again
+      </button>
+    </main>
+  );
+}

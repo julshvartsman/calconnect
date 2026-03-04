@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+:root {
+  --berkeley-blue: #003262;
+  --berkeley-blue-700: #0a4a83;
+  --california-gold: #fdb515;
+  --ink: #0f172a;
+  --muted-ink: #475569;
+  --background: #f8fafc;
+  --card: #ffffff;
+  --foreground: var(--ink);
+  --ring: rgba(0, 50, 98, 0.24);
+  --font-display: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", "Arial", sans-serif;
+  --font-mono: "Menlo", "Monaco", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  background-image:
+    radial-gradient(1200px 500px at 20% -10%, rgba(253, 181, 21, 0.08), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgba(0, 50, 98, 0.07), transparent 55%);
+  min-height: 100vh;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+input, select, textarea {
+  outline: none;
+}
+
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--berkeley-blue-700);
+}
+
+.card-surface {
+  background: var(--card);
+  border: 1px solid rgba(0, 50, 98, 0.08);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.03),
+    0 8px 20px rgba(2, 32, 71, 0.05);
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Hero gradient */
+.hero-gradient {
+  background: linear-gradient(
+    175deg,
+    #003262 0%,
+    #002147 35%,
+    #001a38 55%,
+    rgba(0, 33, 71, 0.92) 75%,
+    transparent 100%
+  );
+  position: relative;
+}
+
+.hero-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 600px 300px at 15% 20%, rgba(253, 181, 21, 0.1), transparent),
+    radial-gradient(ellipse 500px 250px at 85% 60%, rgba(26, 110, 181, 0.12), transparent);
+  pointer-events: none;
+}
+
+/* Animated gradient text */
+@keyframes shimmer-blue {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.text-flow-blue {
+  background: linear-gradient(
+    270deg,
+    #003262,
+    #0a4a83,
+    #1a6eb5,
+    #0a4a83,
+    #003262
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-blue 6s ease-in-out infinite;
+}
+
+.text-flow-gold {
+  background: linear-gradient(
+    270deg,
+    #fdb515,
+    #ffc940,
+    #ffe08a,
+    #ffc940,
+    #fdb515
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-blue 6s ease-in-out infinite;
+}
+
+/* Flip cards for recommendations */
+.flip-card {
+  perspective: 1000px;
+  cursor: pointer;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  min-height: 240px;
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease;
+}
+
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.flip-back {
+  transform: rotateY(180deg);
+}

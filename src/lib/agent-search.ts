@@ -61,7 +61,11 @@ async function getCached(queryKey: string): Promise<AgentSearchResult | null> {
   try {
     const row = await prisma.searchCache.findUnique({ where: { queryKey } });
     if (!row || row.expiresAt < new Date()) {
-      if (row) await prisma.searchCache.delete({ where: { queryKey } }).catch(() => {});
+      if (row) {
+        await prisma.searchCache.delete({ where: { queryKey } }).catch((err) => {
+          console.warn("[AgentSearch] Cache eviction failed:", err instanceof Error ? err.message : err);
+        });
+      }
       return null;
     }
     const result = row.resultJson as unknown as AgentSearchResult;

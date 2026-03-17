@@ -83,7 +83,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
   } else if (existingResource.locationId) {
     locationId = null;
-    await prisma.location.delete({ where: { id: existingResource.locationId } }).catch(() => {});
   }
 
   const updated = await prisma.resource.update({
@@ -118,6 +117,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       resourceTags: { include: { tag: true } },
     },
   });
+
+  // Delete orphaned location only after resource is updated (FK constraint)
+  if (existingResource.locationId && locationId === null) {
+    await prisma.location
+      .delete({ where: { id: existingResource.locationId } })
+      .catch((err) => console.warn("[Resources] Orphan location delete failed:", err));
+  }
 
   return NextResponse.json(updated);
 }

@@ -186,7 +186,7 @@ export function ResourceForm({
           Category
           <select
             name="categoryId"
-            defaultValue={defaults?.categoryId ?? categories[0]?.id}
+            defaultValue={defaults?.categoryId ?? categories[0]?.id ?? ""}
             className="rounded border px-3 py-2"
             required
           >

@@ -15,6 +15,11 @@ import type {
   ResourceHours,
 } from "@/lib/resource-directory";
 
+function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /Can't reach database server|Connection refused|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo/i.test(err.message);
+}
+
 // ── Category icon mapping (display-only, not stored in DB) ──────────────
 
 export const CATEGORY_ICONS: Record<string, string> = {
@@ -106,23 +111,25 @@ function formatLocation(
 /**
  * Returns all active resources grouped by category, ready for the browse
  * page and urgent banner.
+ * Falls back to empty array when DB is unreachable (e.g. restricted network).
  */
 export async function getBrowseData(): Promise<ResourceCategory[]> {
-  const categories = await prisma.category.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      resources: {
-        where: { isActive: true },
-        include: {
-          location: true,
-          resourceTags: { include: { tag: true } },
+  try {
+    const categories = await prisma.category.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        resources: {
+          where: { isActive: true },
+          include: {
+            location: true,
+            resourceTags: { include: { tag: true } },
+          },
+          orderBy: { name: "asc" },
         },
-        orderBy: { name: "asc" },
       },
-    },
-  });
+    });
 
-  return categories
+    return categories
     .map((cat) => ({
       id: cat.slug,
       name: cat.name,
@@ -141,22 +148,38 @@ export async function getBrowseData(): Promise<ResourceCategory[]> {
       ),
     }))
     .filter((cat) => cat.resources.length > 0);
+  } catch (err) {
+    if (isConnectionError(err)) {
+      console.warn("[resource-queries] Database unreachable — using empty data. Try a different network or VPN.");
+      return [];
+    }
+    throw err;
+  }
 }
 
 /**
  * Returns lightweight category chip data for the search landing page.
+ * Falls back to empty array when DB is unreachable.
  */
 export async function getCategoryChips(): Promise<
   { icon: string; label: string; query: string }[]
 > {
-  const categories = await prisma.category.findMany({
-    orderBy: { name: "asc" },
-    where: { resources: { some: { isActive: true } } },
-  });
+  try {
+    const categories = await prisma.category.findMany({
+      orderBy: { name: "asc" },
+      where: { resources: { some: { isActive: true } } },
+    });
 
-  return categories.map((cat) => ({
-    icon: CATEGORY_ICONS[cat.slug] ?? "📋",
-    label: cat.name.replace(/ & .*/, ""),
-    query: cat.name,
-  }));
+    return categories.map((cat) => ({
+      icon: CATEGORY_ICONS[cat.slug] ?? "📋",
+      label: cat.name.replace(/ & .*/, ""),
+      query: cat.name,
+    }));
+  } catch (err) {
+    if (isConnectionError(err)) {
+      console.warn("[resource-queries] Database unreachable — using empty data.");
+      return [];
+    }
+    throw err;
+  }
 }

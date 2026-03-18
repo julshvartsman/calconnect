@@ -16,9 +16,13 @@ import type {
   ResourceHours,
 } from "@/lib/resource-directory";
 
-function isConnectionError(err: unknown): boolean {
+function isDbError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  return /Can't reach database server|Connection refused|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo/i.test(err.message);
+  const msg = err.message;
+  return (
+    /Can't reach database server|Connection refused|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo/i.test(msg) ||
+    /prepared statement.*does not exist|ConnectorError|P1001|P1017/i.test(msg)
+  );
 }
 
 // ── Category icon mapping (display-only, not stored in DB) ──────────────
@@ -170,8 +174,8 @@ export async function getBrowseData(): Promise<ResourceCategory[]> {
     }))
     .filter((cat) => cat.resources.length > 0);
   } catch (err) {
-    if (isConnectionError(err)) {
-      console.warn("[resource-queries] Database unreachable — using empty data. Try a different network or VPN.");
+    if (isDbError(err)) {
+      console.warn("[resource-queries] Database error — using empty data:", err instanceof Error ? err.message : err);
       return [];
     }
     throw err;
@@ -197,8 +201,8 @@ export async function getCategoryChips(): Promise<
       query: cat.name,
     }));
   } catch (err) {
-    if (isConnectionError(err)) {
-      console.warn("[resource-queries] Database unreachable — using empty data.");
+    if (isDbError(err)) {
+      console.warn("[resource-queries] Database error — using empty data.");
       return [];
     }
     throw err;

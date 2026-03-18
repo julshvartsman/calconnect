@@ -146,6 +146,7 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
   }, [dbCategories, activeFilter, searchQuery]);
 
   const totalVisible = filteredCategories.reduce((acc, c) => acc + c.resources.length, 0);
+  const totalResources = dbCategories.reduce((acc, c) => acc + c.resources.length, 0);
 
   return (
     <div>
@@ -218,16 +219,31 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
 
           {filteredCategories.length === 0 && (
             <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center">
-              <p className="text-lg font-medium text-slate-400">No resources match this filter</p>
-              <button
-                onClick={() => {
-                  setActiveFilter("all");
-                  setSearchQuery("");
-                }}
-                className="mt-2 text-sm font-semibold text-[var(--berkeley-blue)] hover:underline"
-              >
-                Clear filters
-              </button>
+              {totalResources === 0 ? (
+                <>
+                  <p className="text-lg font-medium text-slate-400">No resources loaded yet</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Visit{" "}
+                    <a href="/api/seed" className="font-semibold text-[var(--berkeley-blue)] hover:underline">
+                      /api/seed
+                    </a>{" "}
+                    to load 50+ Berkeley resources.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-slate-400">No resources match this filter</p>
+                  <button
+                    onClick={() => {
+                      setActiveFilter("all");
+                      setSearchQuery("");
+                    }}
+                    className="mt-2 text-sm font-semibold text-[var(--berkeley-blue)] hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

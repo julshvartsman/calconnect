@@ -331,7 +331,7 @@ async function findCuratedResources(queryWords: string[]): Promise<CuratedMatch[
         score,
       };
     })
-    .filter((entry) => entry.score > 4)
+    .filter((entry) => entry.score >= 2)
     .sort((a, b) => b.score - a.score)
     .slice(0, 4)
     .map((entry) => entry.resource);
@@ -365,14 +365,17 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
   const hasLocalResults = pages.length > 0 || curatedMatches.length > 0;
   const localResultsWeak = !hasLocalResults || topScrapedScore < CONFIDENCE_THRESHOLD;
 
-  // 3. If no local results at all, check whether the index exists
+  // 3. If no local results at all, check whether any data exists
   if (!hasLocalResults) {
-    const pageCount = await prisma.scrapedPage.count();
-    if (pageCount === 0) {
+    const [pageCount, resourceCount] = await Promise.all([
+      prisma.scrapedPage.count(),
+      prisma.resource.count({ where: { isActive: true } }),
+    ]);
+    if (pageCount === 0 && resourceCount === 0) {
       return {
         query,
-        summary: "The resource index hasn't been built yet. An admin needs to run the scraper first.",
-        action_steps: ["Ask an admin to run the scraper from the admin panel."],
+        summary: "No resources loaded yet. Visit /api/seed to load the directory, or ask an admin to run the scraper.",
+        action_steps: ["Visit /api/seed to load 50+ Berkeley resources.", "Or ask an admin to run the scraper from the admin panel."],
         insights: [],
         sources: [],
         meta: { sourceCount: 0, cached: false, durationMs: Date.now() - start, scrapedAt: new Date().toISOString() },

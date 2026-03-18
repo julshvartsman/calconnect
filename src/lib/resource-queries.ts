@@ -9,6 +9,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { runSeedIfNeeded } from "@/lib/seed-resources";
 import type {
   DirectoryResource,
   ResourceCategory,
@@ -115,7 +116,7 @@ function formatLocation(
  */
 export async function getBrowseData(): Promise<ResourceCategory[]> {
   try {
-    const categories = await prisma.category.findMany({
+    let categories = await prisma.category.findMany({
       orderBy: { name: "asc" },
       include: {
         resources: {
@@ -128,6 +129,26 @@ export async function getBrowseData(): Promise<ResourceCategory[]> {
         },
       },
     });
+
+    const categoriesWithResources = categories.filter((c) => c.resources.length > 0);
+    if (categoriesWithResources.length === 0) {
+      const seeded = await runSeedIfNeeded();
+      if (seeded) {
+        categories = await prisma.category.findMany({
+          orderBy: { name: "asc" },
+          include: {
+            resources: {
+              where: { isActive: true },
+              include: {
+                location: true,
+                resourceTags: { include: { tag: true } },
+              },
+              orderBy: { name: "asc" },
+            },
+          },
+        });
+      }
+    }
 
     return categories
     .map((cat) => ({

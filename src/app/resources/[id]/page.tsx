@@ -1,7 +1,19 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isDbError } from "@/lib/db-errors";
 import { getOpenStatus } from "@/lib/resource-helpers";
+
+const resourceDetailInclude = {
+  category: true,
+  location: true,
+  provider: true,
+  resourceTags: { include: { tag: true } },
+} satisfies Prisma.ResourceInclude;
+
+type ResourceDetail = Prisma.ResourceGetPayload<{ include: typeof resourceDetailInclude }>;
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +47,30 @@ function parseKeyPoints(summaryJson: unknown): string[] {
 
 export default async function ResourceDetailPage({ params }: ResourceDetailProps) {
   const { id } = await params;
-  const resource = await prisma.resource.findUnique({
-    where: { id },
-    include: {
-      category: true,
-      location: true,
-      provider: true,
-      resourceTags: { include: { tag: true } },
-    },
-  });
+  let resource: ResourceDetail | null;
+  try {
+    resource = await prisma.resource.findUnique({
+      where: { id },
+      include: resourceDetailInclude,
+    });
+  } catch (err) {
+    if (isDbError(err)) {
+      console.warn("[resources/[id]] Database error:", err instanceof Error ? err.message : err);
+      return (
+        <main className="mx-auto max-w-4xl px-4 py-16 text-center md:px-6">
+          <h1 className="text-xl font-semibold text-slate-900">Something went wrong</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            We couldn&apos;t load this resource. Check that your database connection is configured (add{" "}
+            <code className="rounded bg-slate-100 px-1">&amp;pgbouncer=true</code> to Supabase URLs on Vercel).
+          </p>
+          <Link href="/browse" className="mt-6 inline-block text-sm font-semibold text-[var(--berkeley-blue)] hover:underline">
+            Back to Browse
+          </Link>
+        </main>
+      );
+    }
+    throw err;
+  }
 
   if (!resource || !resource.isActive) {
     notFound();

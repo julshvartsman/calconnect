@@ -1,8 +1,17 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isDbError } from "@/lib/db-errors";
 import { CampusMap } from "@/components/campus-map";
 
 export const dynamic = "force-dynamic";
+
+const mapResourceInclude = {
+  category: true,
+  location: true,
+} satisfies Prisma.ResourceInclude;
+
+type ResourceWithMap = Prisma.ResourceGetPayload<{ include: typeof mapResourceInclude }>;
 
 type MapPageProps = {
   searchParams: Promise<{ resource?: string }>;
@@ -11,21 +20,29 @@ type MapPageProps = {
 export default async function MapPage({ searchParams }: MapPageProps) {
   const params = await searchParams;
 
-  const resources = await prisma.resource.findMany({
-    where: {
-      isActive: true,
-      location: {
-        latitude: { not: null },
-        longitude: { not: null },
+  let resources: ResourceWithMap[] = [];
+  let dbUnavailable = false;
+  try {
+    resources = await prisma.resource.findMany({
+      where: {
+        isActive: true,
+        location: {
+          latitude: { not: null },
+          longitude: { not: null },
+        },
       },
-    },
-    include: {
-      category: true,
-      location: true,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-  });
+      include: mapResourceInclude,
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    });
+  } catch (err) {
+    if (isDbError(err)) {
+      console.warn("[map] Database error:", err instanceof Error ? err.message : err);
+      dbUnavailable = true;
+    } else {
+      throw err;
+    }
+  }
 
   const mapResources = resources
     .filter((r) => r.location?.latitude != null && r.location?.longitude != null)
@@ -43,6 +60,12 @@ export default async function MapPage({ searchParams }: MapPageProps) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 md:px-6">
+      {dbUnavailable && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Map data is temporarily unavailable. Ensure <code className="rounded bg-amber-100 px-1">DATABASE_URL</code> on Vercel includes{" "}
+          <code className="rounded bg-amber-100 px-1">&amp;pgbouncer=true</code> for Supabase.
+        </div>
+      )}
       <section className="mb-6">
         <h1 className="text-3xl font-bold text-slate-900">Campus Map</h1>
         <p className="mt-2 text-sm text-slate-500">

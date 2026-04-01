@@ -9,21 +9,13 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { isDbError } from "@/lib/db-errors";
 import { runSeedIfNeeded } from "@/lib/seed-resources";
 import type {
   DirectoryResource,
   ResourceCategory,
   ResourceHours,
 } from "@/lib/resource-directory";
-
-function isDbError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message;
-  return (
-    /Can't reach database server|Connection refused|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo/i.test(msg) ||
-    /prepared statement.*does not exist|ConnectorError|P1001|P1017/i.test(msg)
-  );
-}
 
 // ── Category icon mapping (display-only, not stored in DB) ──────────────
 

@@ -6,33 +6,42 @@
   --california-gold: #fdb515;
   --ink: #0f172a;
   --muted-ink: #475569;
-  --background: #f8fafc;
+  --background: #f4f6f9;
+  --background-accent: radial-gradient(
+    ellipse 120% 80% at 50% -30%,
+    rgba(253, 181, 21, 0.09),
+    transparent 55%
+  );
   --card: #ffffff;
   --foreground: var(--ink);
   --ring: rgba(0, 50, 98, 0.24);
-  --font-display: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Inter", "Arial", sans-serif;
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "Menlo", "Monaco", monospace;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: var(--background-accent);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: "Inter", "Segoe UI", Arial, sans-serif;
-  background-image:
-    radial-gradient(1200px 500px at 20% -10%, rgba(253, 181, 21, 0.08), transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, rgba(0, 50, 98, 0.07), transparent 55%);
+  font-family: var(--font-sans);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
 }
 
 input, select, textarea {
@@ -46,10 +55,10 @@ input:focus, select:focus, textarea:focus {
 
 .card-surface {
   background: var(--card);
-  border: 1px solid rgba(0, 50, 98, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.07);
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.03),
-    0 8px 20px rgba(2, 32, 71, 0.05);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -8px rgba(0, 50, 98, 0.08);
 }
 
 /* Line clamp utility */
@@ -60,66 +69,21 @@ input:focus, select:focus, textarea:focus {
   overflow: hidden;
 }
 
-/* Hero gradient */
+/* Hero band — depth without flat solid fill */
 .hero-gradient {
-  background: linear-gradient(
-    175deg,
-    #003262 0%,
-    #002147 35%,
-    #001a38 55%,
-    rgba(0, 33, 71, 0.92) 75%,
-    transparent 100%
-  );
+  background:
+    radial-gradient(ellipse 90% 120% at 100% 0%, rgba(253, 181, 21, 0.12), transparent 45%),
+    radial-gradient(ellipse 70% 80% at 0% 100%, rgba(255, 255, 255, 0.06), transparent 50%),
+    linear-gradient(165deg, #003262 0%, #001f3d 55%, #003262 100%);
   position: relative;
 }
 
-.hero-gradient::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 600px 300px at 15% 20%, rgba(253, 181, 21, 0.1), transparent),
-    radial-gradient(ellipse 500px 250px at 85% 60%, rgba(26, 110, 181, 0.12), transparent);
-  pointer-events: none;
-}
-
-/* Animated gradient text */
-@keyframes shimmer-blue {
-  0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
 .text-flow-blue {
-  background: linear-gradient(
-    270deg,
-    #003262,
-    #0a4a83,
-    #1a6eb5,
-    #0a4a83,
-    #003262
-  );
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer-blue 6s ease-in-out infinite;
+  color: var(--berkeley-blue-700);
 }
 
 .text-flow-gold {
-  background: linear-gradient(
-    270deg,
-    #fdb515,
-    #ffc940,
-    #ffe08a,
-    #ffc940,
-    #fdb515
-  );
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer-blue 6s ease-in-out infinite;
+  color: var(--california-gold);
 }
 
 /* Flip cards for recommendations */

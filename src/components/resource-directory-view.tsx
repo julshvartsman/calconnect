@@ -10,36 +10,45 @@ import {
   type ResourceStatus,
 } from "@/lib/resource-directory";
 
-const CATEGORY_ICONS: Record<string, string> = {
-  food: "🍽", health: "🏥", "mental-health": "🧠", safety: "🛡️",
-  housing: "🏠", financial: "💰", academic: "📚", career: "💼",
-  legal: "⚖️", disability: "♿", technology: "💻", international: "🌏",
-  community: "🤝", "student-life": "🎓",
-};
-
 // ── Filter chips ────────────────────────────────────────────────────────
 
 const FILTERS = [
-  { id: "all", label: "All", icon: "" },
-  { id: "open", label: "Open Now", icon: "🟢" },
-  { id: "closing-soon", label: "Closing Soon", icon: "🟡" },
-  { id: "free-food", label: "Free Food", icon: "🍽" },
-  { id: "emergency", label: "Emergency", icon: "🚨" },
+  { id: "all", label: "All" },
+  { id: "open", label: "Open now" },
+  { id: "closing-soon", label: "Closing soon" },
+  { id: "free-food", label: "Free food" },
+  { id: "emergency", label: "Emergency" },
 ] as const;
 
 type FilterId = (typeof FILTERS)[number]["id"];
+
+/** Deterministic tint per category so rows feel varied, not random. */
+function categoryStyleKey(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i) * (i + 1)) % 6;
+  return h;
+}
+
+const AVATAR_STYLES = [
+  "bg-gradient-to-br from-sky-400/25 to-blue-600/35 text-blue-950 ring-1 ring-blue-500/20",
+  "bg-gradient-to-br from-amber-300/35 to-orange-500/40 text-amber-950 ring-1 ring-amber-500/25",
+  "bg-gradient-to-br from-emerald-400/25 to-teal-600/35 text-emerald-950 ring-1 ring-emerald-500/20",
+  "bg-gradient-to-br from-violet-400/25 to-indigo-600/35 text-indigo-950 ring-1 ring-violet-500/20",
+  "bg-gradient-to-br from-rose-300/30 to-pink-500/35 text-rose-950 ring-1 ring-rose-400/25",
+  "bg-gradient-to-br from-slate-300/40 to-slate-500/35 text-slate-900 ring-1 ring-slate-400/30",
+];
 
 // ── Status badge ────────────────────────────────────────────────────────
 
 function StatusBadge({ status, label }: { status: ResourceStatus; label: string }) {
   const styles: Record<ResourceStatus, string> = {
-    open: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    "closing-soon": "bg-amber-50 text-amber-700 border-amber-200",
-    closed: "bg-slate-100 text-slate-500 border-slate-200",
+    open: "bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-400/35",
+    "closing-soon": "bg-amber-400/20 text-amber-950 ring-1 ring-amber-500/35",
+    closed: "bg-slate-200/60 text-slate-700 ring-1 ring-slate-300/80",
   };
 
   return (
-    <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${styles[status]}`}>
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}>
       {label}
     </span>
   );
@@ -50,20 +59,26 @@ function StatusBadge({ status, label }: { status: ResourceStatus; label: string 
 function ResourceRow({ resource }: { resource: DirectoryResource }) {
   const { status, label } = getResourceStatus(resource);
   const hours = getDisplayHours(resource);
+  const initial = resource.name.trim().charAt(0).toUpperCase() || "?";
+  const avatarClass = AVATAR_STYLES[categoryStyleKey(resource.category)];
 
   return (
     <button
       onClick={() => {
         if (resource.url) window.open(resource.url, "_blank");
       }}
-      className="flex w-full items-center gap-4 border-b border-slate-100 px-5 py-4 text-left transition hover:bg-slate-50/80 last:border-b-0"
+      className="group flex w-full items-center gap-4 border-b border-slate-100/90 px-5 py-4 text-left transition hover:bg-gradient-to-r hover:from-slate-50/80 hover:to-white last:border-b-0"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg">
-        {CATEGORY_ICONS[resource.category] ?? "📋"}
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold shadow-sm transition group-hover:scale-[1.03] ${avatarClass}`}
+      >
+        {initial}
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-slate-900 truncate">{resource.name}</p>
+        <p className="font-semibold text-slate-900 truncate transition group-hover:text-[var(--berkeley-blue)]">
+          {resource.name}
+        </p>
         <p className="flex items-center gap-1.5 text-sm text-slate-500">
           <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <circle cx="12" cy="12" r="10" />
@@ -75,7 +90,13 @@ function ResourceRow({ resource }: { resource: DirectoryResource }) {
 
       <StatusBadge status={status} label={label} />
 
-      <svg className="h-5 w-5 shrink-0 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg
+        className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[var(--berkeley-blue)]/50"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
         <path d="M9 5l7 7-7 7" />
       </svg>
     </button>
@@ -88,13 +109,14 @@ function CategorySection({ category, resources }: { category: ResourceCategory; 
   if (resources.length === 0) return null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="bg-[var(--berkeley-blue)] px-5 py-3.5">
-        <h3 className="text-lg font-bold text-white">
-          <span className="mr-2">{category.icon}</span>
-          {category.name}
-        </h3>
-        <p className="text-sm font-medium text-[var(--california-gold)]">
+    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_24px_-12px_rgba(0,50,98,0.12)] ring-1 ring-slate-900/[0.03]">
+      <div className="relative border-b border-slate-100/90 bg-gradient-to-r from-slate-50 via-white to-sky-50/40 px-5 py-4 pl-5">
+        <div
+          className="absolute inset-y-3 left-0 w-1 rounded-full bg-gradient-to-b from-[var(--california-gold)] to-[var(--berkeley-blue)]"
+          aria-hidden
+        />
+        <h3 className="pl-2 text-base font-semibold tracking-tight text-slate-900">{category.name}</h3>
+        <p className="mt-1 pl-2 text-xs font-medium text-slate-500">
           {resources.length} resource{resources.length !== 1 ? "s" : ""}
         </p>
       </div>
@@ -151,12 +173,23 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
   return (
     <div>
       {/* Hero header */}
-      <div className="bg-[var(--berkeley-blue)] px-4 pb-6 pt-6 md:px-6">
-        <div className="mx-auto max-w-3xl">
+      <div className="relative overflow-hidden border-b border-slate-900/10 bg-[var(--berkeley-blue)] px-4 pb-7 pt-7 md:px-6">
+        <div
+          className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-[var(--california-gold)]/20 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-20 -left-24 h-56 w-56 rounded-full bg-white/10 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative z-[1] mx-auto max-w-3xl">
+          <p className="mb-3 text-center text-sm font-medium text-[var(--california-gold)]/95 md:text-left">
+            Campus resources, organized
+          </p>
           {/* Search bar */}
           <div className="relative">
             <svg
-              className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--california-gold)]"
+              className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--california-gold)]/70"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -174,8 +207,8 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
                   router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
                 }
               }}
-              placeholder="Search resources, food, care..."
-              className="w-full rounded-xl border-0 bg-slate-700/50 py-3.5 pl-12 pr-4 text-white placeholder-slate-400 outline-none ring-1 ring-white/10 transition focus:bg-slate-700/70 focus:ring-[var(--california-gold)]"
+              placeholder="Filter by name, topic, or location…"
+              className="w-full rounded-xl border-0 bg-white/12 py-3.5 pl-12 pr-4 text-white shadow-inner shadow-black/10 placeholder-white/50 outline-none ring-1 ring-white/20 transition focus:bg-white/18 focus:ring-2 focus:ring-[var(--california-gold)]/35"
             />
           </div>
 
@@ -185,13 +218,13 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
               <button
                 key={f.id}
                 onClick={() => setActiveFilter(f.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                type="button"
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
                   activeFilter === f.id
-                    ? "bg-white text-[var(--berkeley-blue)] shadow-sm"
-                    : "bg-white/15 text-white hover:bg-white/25"
+                    ? "bg-white text-[var(--berkeley-blue)] shadow-md ring-2 ring-[var(--california-gold)]/50"
+                    : "bg-white/10 text-white/90 ring-1 ring-white/15 hover:bg-white/18"
                 }`}
               >
-                {f.icon && <span>{f.icon}</span>}
                 {f.label}
               </button>
             ))}
@@ -201,18 +234,18 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
 
       {/* Directory */}
       <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
-        <div className="mb-4">
-          <h2 className="text-xl font-bold text-slate-900">
-            {activeFilter === "all" ? "All Resources" : FILTERS.find((f) => f.id === activeFilter)?.label}
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+            {activeFilter === "all" ? "All resources" : FILTERS.find((f) => f.id === activeFilter)?.label}
           </h2>
-          <p className="text-sm text-slate-500">
+          <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-slate-600">
             {activeFilter === "all"
-              ? "Browse by category and tap to view on map"
-              : `${totalVisible} resource${totalVisible !== 1 ? "s" : ""} found`}
+              ? "Browse by category. Tap a row to open the site, or use the map to see what’s nearby."
+              : `${totalVisible} match${totalVisible !== 1 ? "es" : ""}`}
           </p>
         </div>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           {filteredCategories.map(({ category, resources }) => (
             <CategorySection key={category.id} category={category} resources={resources} />
           ))}
@@ -249,16 +282,21 @@ export function ResourceDirectoryView({ categories: dbCategories }: ResourceDire
         </div>
 
         {/* Deep search CTA */}
-        <div className="mt-8 rounded-xl border border-slate-200 bg-gradient-to-r from-[var(--berkeley-blue)] to-[#0a4a83] p-6 text-center text-white shadow-sm">
-          <p className="text-lg font-bold">Can&apos;t find what you need?</p>
-          <p className="mt-1 text-sm text-slate-300">
-            Our AI-powered search can find specific resources, eligibility info, and more
+        <div className="relative mt-10 overflow-hidden rounded-2xl border border-slate-900/10 bg-gradient-to-br from-[#003262] via-[#002a52] to-[#001a33] p-7 text-center text-white shadow-[0_12px_40px_-16px_rgba(0,50,98,0.45)]">
+          <div
+            className="pointer-events-none absolute -right-10 top-0 h-32 w-32 rounded-full bg-[var(--california-gold)]/25 blur-2xl"
+            aria-hidden
+          />
+          <p className="relative text-lg font-semibold">Need something more specific?</p>
+          <p className="relative mt-2 text-sm text-white/80">
+            AI search pulls eligibility, hours, and sources from across the web.
           </p>
           <button
+            type="button"
             onClick={() => router.push("/search")}
-            className="mt-4 rounded-lg bg-[var(--california-gold)] px-6 py-2.5 text-sm font-bold text-[var(--berkeley-blue)] transition hover:brightness-110"
+            className="relative mt-6 inline-flex items-center justify-center rounded-full bg-[var(--california-gold)] px-6 py-2.5 text-sm font-semibold text-[var(--berkeley-blue)] shadow-md transition hover:brightness-105 active:scale-[0.98]"
           >
-            🔍 Search with AI
+            Open AI search
           </button>
         </div>
       </div>

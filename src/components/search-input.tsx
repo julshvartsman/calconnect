@@ -33,7 +33,7 @@ export function SearchInput({ defaultValue = "" }: SearchInputProps) {
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-md transition focus-within:border-[var(--berkeley-blue)]/30 focus-within:shadow-lg">
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white p-2 shadow-[0_4px_24px_-12px_rgba(15,23,42,0.12)] transition focus-within:border-[var(--berkeley-blue)]/25 focus-within:shadow-[0_8px_32px_-12px_rgba(0,50,98,0.18)] focus-within:ring-2 focus-within:ring-[var(--california-gold)]/25">
         <svg
           className="ml-3 h-5 w-5 shrink-0 text-slate-400"
           fill="none"
@@ -53,7 +53,7 @@ export function SearchInput({ defaultValue = "" }: SearchInputProps) {
         />
         <button
           type="submit"
-          className="shrink-0 rounded-xl bg-[var(--berkeley-blue)] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[var(--berkeley-blue-700)] active:scale-[0.97]"
+          className="shrink-0 rounded-xl bg-gradient-to-b from-[var(--berkeley-blue)] to-[#00254a] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97]"
         >
           Search
         </button>

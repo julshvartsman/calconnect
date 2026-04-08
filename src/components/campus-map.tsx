@@ -26,33 +26,34 @@ const DEFAULT_ZOOM = 15;
 const SELECTED_ZOOM = 17;
 const MAP_MAX_ZOOM = 19;
 
+/** Soft, distinct pastels — readable on light basemap tiles */
 const CATEGORY_COLORS: Record<string, string> = {
-  food: "#22c55e",
-  housing: "#3b82f6",
-  financial: "#eab308",
-  health: "#ef4444",
-  "mental-health": "#a855f7",
-  career: "#f97316",
-  academic: "#06b6d4",
-  tutoring: "#06b6d4",
-  wellness: "#10b981",
-  disability: "#8b5cf6",
-  legal: "#64748b",
-  safety: "#dc2626",
-  emergency: "#dc2626",
-  technology: "#6366f1",
-  "student-life": "#ec4899",
-  "student-affairs": "#ec4899",
+  food: "#3d9f6e",
+  housing: "#4f8fd4",
+  financial: "#d4a017",
+  health: "#e07070",
+  "mental-health": "#9b7ed9",
+  career: "#e09050",
+  academic: "#3db8c4",
+  tutoring: "#3db8c4",
+  wellness: "#3db896",
+  disability: "#8f7ad4",
+  legal: "#7a8fa3",
+  safety: "#d96060",
+  emergency: "#d96060",
+  technology: "#6b7fd6",
+  "student-life": "#d972a8",
+  "student-affairs": "#d972a8",
 };
 
 const CLUSTER_CSS = `
 .marker-cluster {
-  background: rgba(0, 50, 98, 0.15);
+  background: rgba(91, 143, 168, 0.22);
   border-radius: 50%;
 }
 .marker-cluster div {
-  background: #003262;
-  color: #FDB515;
+  background: linear-gradient(145deg, #6b9db8 0%, #5a8aa8 100%);
+  color: #fffef8;
   width: 32px;
   height: 32px;
   margin-left: 4px;
@@ -63,22 +64,27 @@ const CLUSTER_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  box-shadow: 0 2px 10px rgba(45, 85, 105, 0.35);
 }
 .marker-cluster-small {
-  background: rgba(0, 50, 98, 0.12);
+  background: rgba(91, 143, 168, 0.18);
 }
 .marker-cluster-medium {
-  background: rgba(0, 50, 98, 0.18);
+  background: rgba(91, 143, 168, 0.24);
 }
 .marker-cluster-large {
-  background: rgba(0, 50, 98, 0.25);
+  background: rgba(91, 143, 168, 0.3);
 }
 `;
 
+const PIN_ACCENT = "#5a8aa8";
+
 function pinIcon(leaflet: typeof L, color: string, isSelected: boolean): L.DivIcon {
   const size = isSelected ? 28 : 20;
-  const border = isSelected ? "3px solid #003262" : "2px solid #fff";
+  const border = isSelected ? `3px solid ${PIN_ACCENT}` : "2px solid #ffffff";
+  const shadow = isSelected
+    ? "0 2px 10px rgba(45, 85, 105, 0.45)"
+    : "0 1px 4px rgba(45, 85, 105, 0.25)";
   return leaflet.divIcon({
     className: "",
     iconSize: [size, size],
@@ -89,9 +95,9 @@ function pinIcon(leaflet: typeof L, color: string, isSelected: boolean): L.DivIc
       background:${color};
       border:${border};
       border-radius:50%;
-      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      box-shadow:${shadow};
       transition:transform 0.2s;
-      ${isSelected ? "transform:scale(1.15);" : ""}
+      ${isSelected ? "transform:scale(1.12);" : ""}
     "></div>`,
   });
 }
@@ -148,10 +154,15 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
         maxBoundsViscosity: 1,
       });
 
-      leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: MAP_MAX_ZOOM,
-      }).addTo(map);
+      // Carto Positron — light, low-contrast streets (friendlier than default OSM)
+      leaflet
+        .tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: "abcd",
+          maxZoom: 20,
+        })
+        .addTo(map);
 
       map.whenReady(() => {
         map.invalidateSize();
@@ -206,7 +217,7 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
     });
 
     for (const resource of resources) {
-      const color = CATEGORY_COLORS[resource.category] ?? "#003262";
+      const color = CATEGORY_COLORS[resource.category] ?? PIN_ACCENT;
       const isSelected = resource.id === selectedId;
       const icon = pinIcon(leaflet, color, isSelected);
 
@@ -214,9 +225,9 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
 
       const locationLine = [resource.building, resource.address].filter(Boolean).join(" · ");
       marker.bindPopup(
-        `<div style="font-family:Inter,sans-serif;min-width:160px">
-          <p style="font-weight:600;font-size:13px;margin:0 0 4px">${escapeHtml(resource.name)}</p>
-          <p style="font-size:11px;color:#003262;font-weight:600;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(resource.category.replace("-", " "))}</p>
+        `<div style="font-family:system-ui,-apple-system,sans-serif;min-width:160px">
+          <p style="font-weight:600;font-size:13px;margin:0 0 4px;color:#334155">${escapeHtml(resource.name)}</p>
+          <p style="font-size:11px;color:#5a8aa8;font-weight:600;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(resource.category.replace("-", " "))}</p>
           ${locationLine ? `<p style="font-size:11px;color:#64748b;margin:0">${escapeHtml(locationLine)}</p>` : ""}
         </div>`,
         { closeButton: false, offset: [0, -2] },

@@ -64,7 +64,9 @@ export function UrgentBanner({ resources }: UrgentBannerProps) {
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [paused, setPaused] = useState(false);
+  /** Pause without re-running the scroll effect (state would reset scroll position). */
+  const pausedRef = useRef(false);
+  const scrollPosRef = useRef(0);
 
   useEffect(() => {
     setAlerts(computeAlerts());
@@ -76,23 +78,30 @@ export function UrgentBanner({ resources }: UrgentBannerProps) {
     const el = scrollRef.current;
     if (!el || alerts.length === 0) return;
 
-    let raf: number;
-    let pos = 0;
+    scrollPosRef.current = 0;
     const speed = 0.5;
+    let raf = 0;
+    let cancelled = false;
 
     function step() {
-      if (!paused && el) {
-        pos += speed;
+      if (cancelled) return;
+      if (!pausedRef.current) {
+        scrollPosRef.current += speed;
         const halfWidth = el.scrollWidth / 2;
-        if (pos >= halfWidth) pos -= halfWidth;
-        el.scrollLeft = pos;
+        if (halfWidth > 0 && scrollPosRef.current >= halfWidth) {
+          scrollPosRef.current -= halfWidth;
+        }
+        el.scrollLeft = scrollPosRef.current;
       }
       raf = requestAnimationFrame(step);
     }
 
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [alerts, paused]);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [alerts]);
 
   if (alerts.length === 0) return null;
 
@@ -112,9 +121,13 @@ export function UrgentBanner({ resources }: UrgentBannerProps) {
     <div className="bg-[var(--california-gold)] text-[var(--berkeley-blue)]">
       <div
         ref={scrollRef}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        className="flex items-center overflow-hidden whitespace-nowrap px-4 py-2 text-sm font-semibold"
+        onMouseEnter={() => {
+          pausedRef.current = true;
+        }}
+        onMouseLeave={() => {
+          pausedRef.current = false;
+        }}
+        className="flex cursor-default items-center overflow-x-hidden overflow-y-visible whitespace-nowrap px-4 py-2 text-sm font-semibold"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         <div className="flex shrink-0 items-center">

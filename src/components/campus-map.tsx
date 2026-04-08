@@ -19,8 +19,12 @@ type CampusMapProps = {
 };
 
 const CAMPUS_CENTER: [number, number] = [37.8719, -122.2585];
+/** Southwest then northeast — UC Berkeley core, Northside, Southside, downtown strip. */
+const BERKELEY_SW: [number, number] = [37.858, -122.275];
+const BERKELEY_NE: [number, number] = [37.882, -122.246];
 const DEFAULT_ZOOM = 15;
 const SELECTED_ZOOM = 17;
+const MAP_MAX_ZOOM = 19;
 
 const CATEGORY_COLORS: Record<string, string> = {
   food: "#22c55e",
@@ -132,17 +136,30 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
 
       leafletRef.current = leaflet;
 
+      const berkeleyBounds = leaflet.latLngBounds(BERKELEY_SW, BERKELEY_NE);
+
       const map = leaflet.map(containerRef.current, {
         center: CAMPUS_CENTER,
         zoom: DEFAULT_ZOOM,
+        maxZoom: MAP_MAX_ZOOM,
         zoomControl: true,
         scrollWheelZoom: true,
+        maxBounds: berkeleyBounds,
+        maxBoundsViscosity: 1,
       });
 
       leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
+        maxZoom: MAP_MAX_ZOOM,
       }).addTo(map);
+
+      map.whenReady(() => {
+        map.invalidateSize();
+        const minZ = map.getBoundsZoom(berkeleyBounds);
+        if (Number.isFinite(minZ) && minZ >= 0) {
+          map.setMinZoom(minZ);
+        }
+      });
 
       mapRef.current = map;
       setReady(true);
@@ -216,6 +233,8 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
     map.addLayer(clusterGroup);
     clusterGroupRef.current = clusterGroup;
 
+    const berkeleyBounds = leaflet.latLngBounds(BERKELEY_SW, BERKELEY_NE);
+
     if (selectedId) {
       const selected = resources.find((r) => r.id === selectedId);
       if (selected) {
@@ -223,9 +242,17 @@ export function CampusMap({ resources, selectedId }: CampusMapProps) {
       }
     } else if (resources.length > 0) {
       const group = leaflet.featureGroup(Array.from(markersRef.current.values()));
-      map.fitBounds(group.getBounds().pad(0.15), { maxZoom: DEFAULT_ZOOM });
+      const padded = group.getBounds().pad(0.12);
+      if (berkeleyBounds.contains(padded)) {
+        map.fitBounds(padded, {
+          maxZoom: DEFAULT_ZOOM,
+          padding: [24, 24],
+        });
+      } else {
+        map.fitBounds(berkeleyBounds, { maxZoom: DEFAULT_ZOOM, padding: [16, 16] });
+      }
     } else {
-      map.setView(CAMPUS_CENTER, DEFAULT_ZOOM);
+      map.fitBounds(berkeleyBounds, { maxZoom: DEFAULT_ZOOM, padding: [20, 20] });
     }
   }, [resources, selectedId, ready]);
 

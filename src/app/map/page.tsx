@@ -1,8 +1,8 @@
-import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isDbError } from "@/lib/db-errors";
 import { CampusMap } from "@/components/campus-map";
+import { MapResourceSidebar } from "@/components/map-resource-sidebar";
 
 export const dynamic = "force-dynamic";
 
@@ -73,48 +73,12 @@ export default async function MapPage({ searchParams }: MapPageProps) {
         </p>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="card-surface overflow-hidden rounded-2xl p-2">
+      <section className="grid gap-4 lg:grid-cols-[1.35fr_minmax(280px,0.95fr)] lg:items-start">
+        <div className="card-surface min-h-[min(52vh,480px)] overflow-hidden rounded-2xl p-2 lg:min-h-[min(72vh,640px)]">
           <CampusMap resources={mapResources} selectedId={selected} />
         </div>
 
-        <aside className="card-surface max-h-[500px] space-y-2 overflow-y-auto rounded-2xl p-4">
-          {resources.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-slate-500">
-                No mappable resources yet.
-              </p>
-              <p className="mt-1 text-xs text-slate-400">
-                Add latitude & longitude to resources in the admin panel.
-              </p>
-            </div>
-          ) : (
-            resources.map((resource) => {
-              const isActive = selected === resource.id;
-              return (
-                <Link
-                  key={resource.id}
-                  href={`/map?resource=${resource.id}`}
-                  className={`block rounded-xl border p-3 transition ${
-                    isActive
-                      ? "border-[var(--berkeley-blue)] bg-blue-50 shadow-sm"
-                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
-                  <p className="mt-1 text-xs font-medium text-[var(--berkeley-blue)]">
-                    {resource.category.name}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {[resource.location?.buildingName, resource.location?.room, resource.location?.address]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </Link>
-              );
-            })
-          )}
-        </aside>
+        <MapResourceSidebar resources={resources} selectedId={selected} />
       </section>
     </main>
   );

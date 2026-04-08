@@ -75,8 +75,7 @@ export function UrgentBanner({ resources }: UrgentBannerProps) {
   }, [computeAlerts]);
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || alerts.length === 0) return;
+    if (alerts.length === 0) return;
 
     scrollPosRef.current = 0;
     const speed = 0.5;
@@ -85,13 +84,15 @@ export function UrgentBanner({ resources }: UrgentBannerProps) {
 
     function step() {
       if (cancelled) return;
+      const node = scrollRef.current;
+      if (!node) return;
       if (!pausedRef.current) {
         scrollPosRef.current += speed;
-        const halfWidth = el.scrollWidth / 2;
+        const halfWidth = node.scrollWidth / 2;
         if (halfWidth > 0 && scrollPosRef.current >= halfWidth) {
           scrollPosRef.current -= halfWidth;
         }
-        el.scrollLeft = scrollPosRef.current;
+        node.scrollLeft = scrollPosRef.current;
       }
       raf = requestAnimationFrame(step);
     }

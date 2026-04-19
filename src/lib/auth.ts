@@ -16,6 +16,23 @@ const providers =
       ]
     : [];
 
+function summarizeSecret(value?: string): string {
+  if (!value) return "missing";
+  const trimmed = value.trim();
+  const suffix = trimmed.slice(-6);
+  return `present(len=${trimmed.length}, suffix=${suffix})`;
+}
+
+if (process.env.NODE_ENV === "production") {
+  console.info("[Auth] Environment check", {
+    hasGoogleProvider: providers.length > 0,
+    googleClientId: summarizeSecret(googleClientId),
+    googleClientSecret: summarizeSecret(googleClientSecret),
+    nextAuthUrl: process.env.NEXTAUTH_URL ?? "missing",
+    nextAuthSecret: summarizeSecret(process.env.NEXTAUTH_SECRET),
+  });
+}
+
 function normalizeEmail(email?: string | null): string | null {
   if (!email) return null;
   return email.trim().toLowerCase();
@@ -29,6 +46,20 @@ function isBerkeleyEmail(email?: string | null): boolean {
 export const authConfig: NextAuthConfig = {
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
+  debug: process.env.AUTH_DEBUG === "true",
+  logger: {
+    error(code, metadata) {
+      console.error("[Auth][NextAuth][error]", code, metadata);
+    },
+    warn(code) {
+      console.warn("[Auth][NextAuth][warn]", code);
+    },
+    debug(code, metadata) {
+      if (process.env.AUTH_DEBUG === "true") {
+        console.info("[Auth][NextAuth][debug]", code, metadata);
+      }
+    },
+  },
   providers,
   pages: {
     signIn: "/signin",

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireAdminOrThrow } from "@/lib/api-auth";
 import { getLLMUsage, isLLMAvailable } from "@/lib/llm-summarize";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const forbiddenResponse = await requireAdminOrThrow();
+  if (forbiddenResponse) return forbiddenResponse;
+
   return NextResponse.json({
     available: isLLMAvailable(),
     usage: getLLMUsage(),

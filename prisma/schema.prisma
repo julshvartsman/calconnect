@@ -26,6 +26,17 @@ enum ProviderOrgType {
   external_partner
 }
 
+enum SearchEventType {
+  search_submitted
+  search_results
+  search_no_results
+  result_clicked
+  chat_opened
+  chat_question_asked
+  chat_response_returned
+  chat_fallback_served
+}
+
 model Resource {
   id                    String        @id @default(cuid())
   name                  String
@@ -148,4 +159,27 @@ model ScrapedPage {
 
   @@index([category])
   @@index([domain])
+}
+
+model SearchEvent {
+  id            String          @id @default(cuid())
+  eventType     SearchEventType
+  query         String
+  queryKey      String
+  anonymousId   String
+  sessionId     String
+  path          String?
+  resultCount   Int?
+  durationMs    Int?
+  cached        Boolean?
+  success       Boolean?
+  resultId      String?
+  resultRank    Int?
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+
+  @@index([createdAt])
+  @@index([eventType, createdAt])
+  @@index([queryKey, createdAt])
+  @@index([anonymousId, createdAt])
 }

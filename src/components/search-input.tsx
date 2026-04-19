@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { trackSearchEvent } from "@/lib/analytics/client";
 
 type SearchInputProps = {
   defaultValue?: string;
@@ -27,6 +28,13 @@ export function SearchInput({ defaultValue = "" }: SearchInputProps) {
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = query.trim();
+    if (trimmed) {
+      trackSearchEvent({
+        eventType: "search_submitted",
+        query: trimmed,
+        path: window.location.pathname,
+      });
+    }
     saveSearchQuery(trimmed);
     router.push(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   }

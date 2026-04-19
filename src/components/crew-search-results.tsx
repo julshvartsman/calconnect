@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { trackSearchEvent } from "@/lib/analytics/client";
+import { ResourceChatPanel } from "@/components/resource-chat-panel";
 
 type SearchMeta = {
   sourceCount: number;
@@ -70,6 +72,7 @@ function LoadingSkeleton() {
 export function CrewSearchResults({ query }: Props) {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<SearchResult | null>(null);
+  const [activeChatSource, setActiveChatSource] = useState<SearchResult["sources"][number] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,11 +83,29 @@ export function CrewSearchResults({ query }: Props) {
       if (!cancelled) {
         setResult(payload);
         setLoading(false);
+        trackSearchEvent({
+          eventType: payload.meta.sourceCount === 0 ? "search_no_results" : "search_results",
+          query,
+          path: "/search",
+          resultCount: payload.meta.sourceCount,
+          durationMs: payload.meta.durationMs,
+          cached: payload.meta.cached,
+          success: !payload.error && res.ok,
+        });
       }
     }
 
     run().catch(() => {
       if (!cancelled) {
+        trackSearchEvent({
+          eventType: "search_results",
+          query,
+          path: "/search",
+          resultCount: 0,
+          durationMs: 0,
+          cached: false,
+          success: false,
+        });
         setResult({
           query,
           summary: "Could not connect to search agents. Please try again.",
@@ -172,40 +193,76 @@ export function CrewSearchResults({ query }: Props) {
               </h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {result.sources.map((source, i) => (
-                  <a
-                    key={`${source.url}-${i}`}
-                    href={source.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group flex items-start gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-[var(--berkeley-blue)]/20 hover:bg-blue-50/30"
-                  >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--berkeley-blue)]/10 text-[10px] font-bold text-[var(--berkeley-blue)]">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--berkeley-blue)] group-hover:underline">
-                        {source.title}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span className="truncate text-xs text-slate-400">
-                          {domainLabel(source.url)}
-                        </span>
-                        {source.category && (
-                          <span className="shrink-0 rounded-full bg-[var(--california-gold)]/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            {source.category}
+                  <div key={`${source.url}-${i}`} className="rounded-xl border border-slate-100 p-3 transition hover:border-[var(--berkeley-blue)]/20 hover:bg-blue-50/30">
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() =>
+                        trackSearchEvent({
+                          eventType: "result_clicked",
+                          query,
+                          path: "/search",
+                          resultId: source.url,
+                          resultRank: i + 1,
+                          metadata: {
+                            title: source.title,
+                            category: source.category ?? null,
+                          },
+                        })
+                      }
+                      className="group flex items-start gap-3"
+                    >
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--berkeley-blue)]/10 text-[10px] font-bold text-[var(--berkeley-blue)]">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[var(--berkeley-blue)] group-hover:underline">
+                          {source.title}
+                        </p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <span className="truncate text-xs text-slate-400">
+                            {domainLabel(source.url)}
                           </span>
+                          {source.category && (
+                            <span className="shrink-0 rounded-full bg-[var(--california-gold)]/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                              {source.category}
+                            </span>
+                          )}
+                        </div>
+                        {source.snippet && (
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
+                            {source.snippet}
+                          </p>
                         )}
                       </div>
-                      {source.snippet && (
-                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
-                          {source.snippet}
-                        </p>
-                      )}
-                    </div>
-                  </a>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveChatSource(source);
+                        trackSearchEvent({
+                          eventType: "chat_opened",
+                          query,
+                          path: "/search",
+                          metadata: { sourceTitle: source.title, sourceUrl: source.url, resultRank: i + 1 },
+                        });
+                      }}
+                      className="mt-2 rounded-lg border border-[var(--berkeley-blue)]/25 px-2.5 py-1 text-xs font-semibold text-[var(--berkeley-blue)] hover:bg-[var(--berkeley-blue)]/5"
+                    >
+                      Ask about this
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
+          )}
+          {activeChatSource && (
+            <ResourceChatPanel
+              query={query}
+              source={activeChatSource}
+              onClose={() => setActiveChatSource(null)}
+            />
           )}
         </div>
       </article>

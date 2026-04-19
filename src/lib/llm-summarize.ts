@@ -541,3 +541,117 @@ export async function llmKnowledgeFallback(query: string): Promise<LLMKnowledgeR
       : [],
   };
 }
+
+type ResourceChatInput = {
+  query: string;
+  selectedTitle: string;
+  selectedUrl: string;
+  question: string;
+  messages: { role: "user" | "assistant"; content: string }[];
+  contextSources: { title: string; url: string; snippet: string }[];
+};
+
+type ResourceChatOutput = {
+  answer: string;
+  insights: { label: string; value: string; sourceIndex: number }[];
+};
+
+const broadPhrases = [
+  "it depends",
+  "generally",
+  "typically",
+  "in most cases",
+  "you may want to",
+  "consider reaching out",
+  "for more information",
+];
+
+function hasSpecificInsights(output: ResourceChatOutput): boolean {
+  if (output.insights.length < 3) return false;
+  const genericCount = output.insights.filter((item) =>
+    broadPhrases.some((phrase) => item.value.toLowerCase().includes(phrase)),
+  ).length;
+  return genericCount <= 1;
+}
+
+function buildResourceChatPrompt(input: ResourceChatInput): string {
+  const sourceText = input.contextSources
+    .map(
+      (source, index) =>
+        `[Source ${index + 1}] ${source.title}\nURL: ${source.url}\nSnippet: ${source.snippet}`,
+    )
+    .join("\n\n");
+
+  const history = input.messages
+    .slice(-8)
+    .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
+    .join("\n");
+
+  return `You are a UC Berkeley advising assistant focused on one selected resource plus closely related resources.
+
+Selected resource:
+- Title: ${input.selectedTitle}
+- URL: ${input.selectedUrl}
+- Original search: ${input.query}
+
+Conversation history:
+${history || "No prior chat history."}
+
+Current user question:
+${input.question}
+
+Allowed evidence (use ONLY this):
+${sourceText}
+
+Return ONLY valid JSON with:
+1) "answer": 2-4 concise sentences directly answering the question using specific details from sources.
+2) "insights": array of 3-6 items with exact keys:
+   - label: short category (Eligibility, Next step, Documents, Timeline, Cost, Contact, Location, Hours)
+   - value: one concrete, decision-ready fact (no broad generic advice)
+   - sourceIndex: integer index of supporting source (1-based)
+
+Rules:
+- Prioritize selected resource details first, then related resources.
+- Every insight must be grounded in one source and include concrete facts when available.
+- If a fact is not in sources, say "Not confirmed in source" for that insight value.
+- Do not invent details.`;
+}
+
+export async function llmResourceChat(input: ResourceChatInput): Promise<ResourceChatOutput | null> {
+  const prompt = buildResourceChatPrompt(input);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const text = await callLLM(prompt, `resource-chat-${attempt + 1}`);
+    if (!text) continue;
+
+    const parsed = parseJSON(text);
+    if (
+      !parsed ||
+      typeof parsed.answer !== "string" ||
+      !Array.isArray(parsed.insights)
+    ) {
+      continue;
+    }
+
+    const output: ResourceChatOutput = {
+      answer: parsed.answer,
+      insights: parsed.insights
+        .filter((item) => item && typeof item === "object")
+        .map((item) => ({
+          label: typeof item.label === "string" ? item.label : "Detail",
+          value: typeof item.value === "string" ? item.value : "Not confirmed in source",
+          sourceIndex:
+            typeof item.sourceIndex === "number" && Number.isInteger(item.sourceIndex)
+              ? item.sourceIndex
+              : 1,
+        }))
+        .slice(0, 6),
+    };
+
+    if (hasSpecificInsights(output)) {
+      return output;
+    }
+  }
+
+  return null;
+}

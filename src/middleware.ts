@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export default auth((request) => {
+export default async function middleware(request: NextRequest) {
   const isAdminPath = request.nextUrl.pathname.startsWith("/admin");
   const isProviderPath = request.nextUrl.pathname.startsWith("/provider");
 
@@ -9,22 +9,29 @@ export default auth((request) => {
     return NextResponse.next();
   }
 
-  if (!request.auth?.user) {
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
+
+  if (!token?.email) {
     const signInUrl = new URL("/signin", request.nextUrl.origin);
-    signInUrl.searchParams.set("callbackUrl", request.nextUrl.pathname);
+    signInUrl.searchParams.set("callbackUrl", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(signInUrl);
   }
 
-  if (isAdminPath && request.auth.user.role !== "admin") {
+  const role = typeof token.role === "string" ? token.role : undefined;
+
+  if (isAdminPath && role !== "admin") {
     return NextResponse.redirect(new URL("/", request.nextUrl.origin));
   }
 
-  if (isProviderPath && request.auth.user.role !== "provider" && request.auth.user.role !== "admin") {
+  if (isProviderPath && role !== "provider" && role !== "admin") {
     return NextResponse.redirect(new URL("/", request.nextUrl.origin));
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: ["/admin/:path*", "/provider/:path*"],

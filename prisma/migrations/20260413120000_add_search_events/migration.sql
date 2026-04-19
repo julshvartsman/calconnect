@@ -1,8 +1,18 @@
--- CreateEnum
-CREATE TYPE "SearchEventType" AS ENUM ('search_submitted', 'search_results', 'search_no_results', 'result_clicked');
+-- CreateEnum (idempotent for partially-applied environments)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SearchEventType') THEN
+    CREATE TYPE "SearchEventType" AS ENUM (
+      'search_submitted',
+      'search_results',
+      'search_no_results',
+      'result_clicked'
+    );
+  END IF;
+END $$;
 
 -- CreateTable
-CREATE TABLE "SearchEvent" (
+CREATE TABLE IF NOT EXISTS "SearchEvent" (
     "id" TEXT NOT NULL,
     "eventType" "SearchEventType" NOT NULL,
     "query" TEXT NOT NULL,
@@ -23,13 +33,13 @@ CREATE TABLE "SearchEvent" (
 );
 
 -- CreateIndex
-CREATE INDEX "SearchEvent_createdAt_idx" ON "SearchEvent"("createdAt");
+CREATE INDEX IF NOT EXISTS "SearchEvent_createdAt_idx" ON "SearchEvent"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "SearchEvent_eventType_createdAt_idx" ON "SearchEvent"("eventType", "createdAt");
+CREATE INDEX IF NOT EXISTS "SearchEvent_eventType_createdAt_idx" ON "SearchEvent"("eventType", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "SearchEvent_queryKey_createdAt_idx" ON "SearchEvent"("queryKey", "createdAt");
+CREATE INDEX IF NOT EXISTS "SearchEvent_queryKey_createdAt_idx" ON "SearchEvent"("queryKey", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "SearchEvent_anonymousId_createdAt_idx" ON "SearchEvent"("anonymousId", "createdAt");
+CREATE INDEX IF NOT EXISTS "SearchEvent_anonymousId_createdAt_idx" ON "SearchEvent"("anonymousId", "createdAt");

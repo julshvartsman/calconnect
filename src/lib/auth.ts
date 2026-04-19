@@ -48,15 +48,15 @@ export const authConfig: NextAuthConfig = {
   trustHost: true,
   debug: process.env.AUTH_DEBUG === "true",
   logger: {
-    error(code, metadata) {
-      console.error("[Auth][NextAuth][error]", code, metadata);
+    error(error) {
+      console.error("[Auth][NextAuth][error]", error);
     },
     warn(code) {
       console.warn("[Auth][NextAuth][warn]", code);
     },
-    debug(code, metadata) {
+    debug(code) {
       if (process.env.AUTH_DEBUG === "true") {
-        console.info("[Auth][NextAuth][debug]", code, metadata);
+        console.info("[Auth][NextAuth][debug]", code);
       }
     },
   },

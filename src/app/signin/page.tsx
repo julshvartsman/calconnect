@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth, signIn } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 
 type SignInProps = {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
@@ -18,6 +18,7 @@ export default async function SignInPage({ searchParams }: SignInProps) {
   const params = await searchParams;
   const callbackUrl = getSafeCallbackUrl(params.callbackUrl ?? "/search");
   const error = params.error;
+  const signInHref = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 
   if (session?.user) {
     redirect(callbackUrl);
@@ -45,20 +46,12 @@ export default async function SignInPage({ searchParams }: SignInProps) {
         )}
 
         {oauthConfigured ? (
-          <form
-            className="mt-6"
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: callbackUrl });
-            }}
+          <a
+            href={signInHref}
+            className="mt-6 block w-full rounded-lg bg-[var(--berkeley-blue)] px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-[var(--berkeley-blue-700)]"
           >
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-[var(--berkeley-blue)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--berkeley-blue-700)]"
-            >
-              Continue with Google
-            </button>
-          </form>
+            Continue with Google
+          </a>
         ) : (
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-medium text-amber-800">Google SSO is not configured yet.</p>

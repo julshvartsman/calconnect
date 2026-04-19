@@ -45,18 +45,23 @@ export const authConfig: NextAuthConfig = {
       }
 
       const role = inferRoleFromEmail(email);
-      await prisma.user.upsert({
-        where: { email },
-        update: {
-          name: user.name ?? null,
-          role,
-        },
-        create: {
-          email,
-          name: user.name ?? null,
-          role,
-        },
-      });
+      try {
+        // Keep login path resilient: profile APIs can still upsert later if DB is unavailable.
+        await prisma.user.upsert({
+          where: { email },
+          update: {
+            name: user.name ?? null,
+            role,
+          },
+          create: {
+            email,
+            name: user.name ?? null,
+            role,
+          },
+        });
+      } catch (error) {
+        console.error("[Auth] User upsert failed during sign-in", error);
+      }
 
       return true;
     },
@@ -69,12 +74,16 @@ export const authConfig: NextAuthConfig = {
         return token;
       }
 
-      const persisted = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        select: { role: true },
-      });
-
-      token.role = persisted?.role ?? inferRoleFromEmail(normalizedEmail);
+      try {
+        const persisted = await prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          select: { role: true },
+        });
+        token.role = persisted?.role ?? inferRoleFromEmail(normalizedEmail);
+      } catch (error) {
+        console.error("[Auth] Role lookup failed during JWT callback", error);
+        token.role = inferRoleFromEmail(normalizedEmail);
+      }
       return token;
     },
     async session({ session, token }) {

@@ -1,38 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { createServerClient } from "@supabase/ssr";
 
-export default async function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const isAdminPath = pathname.startsWith("/admin");
-  const isProviderPath = pathname.startsWith("/provider");
-  const isPublicPath = pathname === "/signin" || pathname.startsWith("/api/auth");
+  const isPublicPath =
+    pathname === "/signin" ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/api/auth/");
 
   if (isPublicPath) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // If Supabase isn't configured at all, fail open in dev rather than infinite-looping.
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.next();
+  }
+
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          request.cookies.set(name, value);
+        }
+        response = NextResponse.next({ request });
+        for (const { name, value, options } of cookiesToSet) {
+          response.cookies.set(name, value, options);
+        }
+      },
+    },
   });
 
-  if (!token?.email) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
     const signInUrl = new URL("/signin", request.nextUrl.origin);
     signInUrl.searchParams.set("callbackUrl", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(signInUrl);
   }
 
-  const role = typeof token.role === "string" ? token.role : undefined;
-
-  if (isAdminPath && role !== "admin") {
-    return NextResponse.redirect(new URL("/", request.nextUrl.origin));
-  }
-
-  if (isProviderPath && role !== "provider" && role !== "admin") {
-    return NextResponse.redirect(new URL("/", request.nextUrl.origin));
-  }
-
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

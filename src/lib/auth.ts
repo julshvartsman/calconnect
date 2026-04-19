@@ -27,6 +27,8 @@ function isBerkeleyEmail(email?: string | null): boolean {
 }
 
 export const authConfig: NextAuthConfig = {
+  secret: process.env.NEXTAUTH_SECRET,
+  trustHost: true,
   providers,
   pages: {
     signIn: "/signin",

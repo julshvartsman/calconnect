@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export default async function middleware(request: NextRequest) {
-  const isAdminPath = request.nextUrl.pathname.startsWith("/admin");
-  const isProviderPath = request.nextUrl.pathname.startsWith("/provider");
+  const pathname = request.nextUrl.pathname;
+  const isAdminPath = pathname.startsWith("/admin");
+  const isProviderPath = pathname.startsWith("/provider");
+  const isPublicPath = pathname === "/signin" || pathname.startsWith("/api/auth");
 
-  if (!isAdminPath && !isProviderPath) {
+  if (isPublicPath) {
     return NextResponse.next();
   }
 
@@ -16,7 +18,7 @@ export default async function middleware(request: NextRequest) {
 
   if (!token?.email) {
     const signInUrl = new URL("/signin", request.nextUrl.origin);
-    signInUrl.searchParams.set("callbackUrl", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    signInUrl.searchParams.set("callbackUrl", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(signInUrl);
   }
 
@@ -34,5 +36,5 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/provider/:path*"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };

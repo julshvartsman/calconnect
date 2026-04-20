@@ -1,13 +1,14 @@
 // ── Provider Config ─────────────────────────────────────────────────────
 
-const PERPLEXITY_MODEL = "sonar";
-const PERPLEXITY_URL = "https://api.perplexity.ai/chat/completions";
-
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+// Groq Llama 3.1 8B is faster/cheaper — used for lightweight helper calls
+// like query expansion where throughput matters more than quality.
+const GROQ_FAST_MODEL = "llama-3.1-8b-instant";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -21,11 +22,12 @@ export type LLMKnowledgeResult = LLMSummary & {
   sources: { title: string; url: string; snippet: string }[];
 };
 
-// ── Key helpers ─────────────────────────────────────────────────────────
+export type QueryExpansion = {
+  canonicalTerms: string[];
+  category: string | null;
+};
 
-function getPerplexityKey(): string | null {
-  return process.env.PERPLEXITY_API_KEY?.trim() || null;
-}
+// ── Key helpers ─────────────────────────────────────────────────────────
 
 function getGeminiKey(): string | null {
   return process.env.GEMINI_API_KEY?.trim() || null;
@@ -36,7 +38,7 @@ function getGroqKey(): string | null {
 }
 
 export function isLLMAvailable(): boolean {
-  return getPerplexityKey() !== null || getGeminiKey() !== null || getGroqKey() !== null;
+  return getGeminiKey() !== null || getGroqKey() !== null;
 }
 
 // ── Rate Limiter ────────────────────────────────────────────────────────
@@ -44,12 +46,11 @@ export function isLLMAvailable(): boolean {
 type ProviderLimits = { rpm: number; rpd: number };
 
 const LIMITS: Record<string, ProviderLimits> = {
-  perplexity: { rpm: 20, rpd: 1000 },
-  gemini:     { rpm: 10, rpd: 1400 },
-  groq:       { rpm: 25, rpd: 5500 },
+  gemini: { rpm: 10, rpd: 1400 },
+  groq: { rpm: 25, rpd: 5500 },
 };
 
-const callLog: Record<string, number[]> = { perplexity: [], gemini: [], groq: [] };
+const callLog: Record<string, number[]> = { gemini: [], groq: [] };
 
 function pruneLog(provider: string) {
   const now = Date.now();
@@ -106,7 +107,6 @@ async function rateLimitedWait(provider: string): Promise<boolean> {
 }
 
 export function getLLMUsage() {
-  pruneLog("perplexity");
   pruneLog("gemini");
   pruneLog("groq");
   const now = Date.now();
@@ -114,88 +114,10 @@ export function getLLMUsage() {
     minute: (callLog[p] || []).filter((t) => t > now - 60_000).length,
     day: (callLog[p] || []).length,
   });
-  return { perplexity: stats("perplexity"), gemini: stats("gemini"), groq: stats("groq") };
+  return { gemini: stats("gemini"), groq: stats("groq") };
 }
 
 // ── Provider callers ────────────────────────────────────────────────────
-
-async function callPerplexity(prompt: string, apiKey: string, label: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
-
-    const res = await fetch(PERPLEXITY_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-      }),
-    });
-
-    clearTimeout(timer);
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[LLM] Perplexity ${res.status} (${label}): ${body.slice(0, 150)}`);
-      return null;
-    }
-
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content ?? null;
-  } catch (err) {
-    console.error(`[LLM] Perplexity error (${label}):`, err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-type PerplexityResponse = {
-  content: string | null;
-  citations: string[];
-};
-
-async function callPerplexityWithCitations(prompt: string, apiKey: string, label: string): Promise<PerplexityResponse | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
-
-    const res = await fetch(PERPLEXITY_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-      }),
-    });
-
-    clearTimeout(timer);
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[LLM] Perplexity ${res.status} (${label}): ${body.slice(0, 150)}`);
-      return null;
-    }
-
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content ?? null;
-    const citations: string[] = Array.isArray(data?.citations) ? data.citations : [];
-
-    return { content, citations };
-  } catch (err) {
-    console.error(`[LLM] Perplexity error (${label}):`, err instanceof Error ? err.message : err);
-    return null;
-  }
-}
 
 async function callGemini(prompt: string, apiKey: string, label: string): Promise<string | null> {
   try {
@@ -232,7 +154,12 @@ async function callGemini(prompt: string, apiKey: string, label: string): Promis
   }
 }
 
-async function callGroq(prompt: string, apiKey: string, label: string): Promise<string | null> {
+async function callGroq(
+  prompt: string,
+  apiKey: string,
+  label: string,
+  options?: { model?: string; maxTokens?: number; temperature?: number },
+): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
@@ -245,10 +172,10 @@ async function callGroq(prompt: string, apiKey: string, label: string): Promise<
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: GROQ_MODEL,
+        model: options?.model ?? GROQ_MODEL,
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 4096,
+        temperature: options?.temperature ?? 0.2,
+        max_tokens: options?.maxTokens ?? 4096,
         response_format: { type: "json_object" },
       }),
     });
@@ -270,24 +197,11 @@ async function callGroq(prompt: string, apiKey: string, label: string): Promise<
 }
 
 // ── Unified LLM caller (for JSON prompts) ───────────────────────────────
-// Priority: Perplexity -> Gemini -> Groq
+// Priority: Gemini (higher quality) -> Groq (fast fallback)
 
 async function callLLM(prompt: string, label: string): Promise<string | null> {
-  const pplxKey = getPerplexityKey();
   const geminiKey = getGeminiKey();
   const groqKey = getGroqKey();
-
-  if (pplxKey && canCall("perplexity")) {
-    const ok = await rateLimitedWait("perplexity");
-    if (ok) {
-      recordCall("perplexity");
-      const result = await callPerplexity(prompt, pplxKey, label);
-      if (result) return result;
-      console.log(`[LLM] Perplexity failed for ${label}, trying Gemini...`);
-    } else {
-      console.log(`[LLM] Perplexity rate-limited for ${label}, skipping`);
-    }
-  }
 
   if (geminiKey && canCall("gemini")) {
     const ok = await rateLimitedWait("gemini");
@@ -367,23 +281,170 @@ function extractRelevantParagraphs(text: string, query: string, maxChars = 1200)
   return result.trim() || text.slice(0, maxChars);
 }
 
-// ── Prompts ─────────────────────────────────────────────────────────────
+// ── Query expansion ─────────────────────────────────────────────────────
+// Uses the fastest LLM we have to rewrite the user's natural-language query
+// into a compact set of canonical Berkeley resource terms, plus a guess at
+// the category. Powers the retrieval layer — the scoring function scans for
+// these terms, not just the raw user tokens.
+//
+// Always falls back safely: if the LLM is unavailable or returns junk, we
+// return the original tokens only. Retrieval quality never regresses.
 
-function buildSummarizePrompt(query: string, sources: { title: string; excerpt: string }[]): string {
-  const combined = sources
-    .map((s, i) => `[Source ${i + 1}: ${s.title}]\n${s.excerpt}`)
-    .join("\n\n");
+const KNOWN_CATEGORIES = [
+  "food",
+  "health",
+  "mental-health",
+  "safety",
+  "housing",
+  "financial",
+  "academic",
+  "career",
+  "legal",
+  "disability",
+  "technology",
+  "international",
+  "community",
+  "student-life",
+];
 
-  return `You are a student resource assistant for UC Berkeley. A student searched: "${query}"
+const EXPANSION_TIMEOUT_MS = 6000;
 
-Below are relevant excerpts from official Berkeley pages. Using ONLY this information, create a structured JSON response.
+export async function expandQuery(query: string): Promise<QueryExpansion> {
+  const baseTerms = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2);
 
-${combined}
+  if (baseTerms.length === 0 || !isLLMAvailable()) {
+    return { canonicalTerms: baseTerms, category: null };
+  }
+
+  const prompt = `You translate a UC Berkeley student's natural-language query into retrieval terms for a campus resource index.
+
+Student query: "${query}"
+
+Known categories (pick at most one, or null if unclear):
+${KNOWN_CATEGORIES.join(", ")}
 
 Return JSON with:
-1. "summary": 2-4 clear sentences directly answering the student's need. Include concrete details (locations, hours, deadlines). No preamble like "Based on..." — just answer directly.
-2. "insights": Array of {"label", "value"} objects. Labels to use when info is available: Eligibility, How to access, What to bring, Cost, Hours, Location, Contact, Deadline. Values should be concise (1-2 sentences max). ONLY include labels where the excerpts contain real information.
-3. "action_steps": 3-4 specific steps with real names/locations (e.g. "Visit the Food Pantry in bNorth, MLK Student Union" not "Visit the resource").
+- "canonical_terms": array of 4-10 short lowercase terms or phrases most likely to match a Berkeley resource record. Include synonyms, common resource names (e.g. "CAPS" for counseling, "Food Pantry" for food, "FAFSA" for financial aid, "DSP" for disability, "Tang Center" for health, "Berkeley Law" for legal). Include the most specific terms first. Do NOT include generic words like "help", "need", "how", "get".
+- "category": best-guess category slug from the list above, or null.
+
+Respond with ONLY valid JSON.`;
+
+  // Prefer Groq's fast model for this — it's cheap and returns in <1s.
+  const groqKey = getGroqKey();
+  const geminiKey = getGeminiKey();
+
+  let raw: string | null = null;
+
+  if (groqKey && canCall("groq")) {
+    const ok = await rateLimitedWait("groq");
+    if (ok) {
+      recordCall("groq");
+      try {
+        const fastPromise = callGroq(prompt, groqKey, "expand-query", {
+          model: GROQ_FAST_MODEL,
+          maxTokens: 400,
+          temperature: 0.1,
+        });
+        raw = await Promise.race([
+          fastPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), EXPANSION_TIMEOUT_MS)),
+        ]);
+      } catch {
+        raw = null;
+      }
+    }
+  }
+
+  if (!raw && geminiKey && canCall("gemini")) {
+    const ok = await rateLimitedWait("gemini");
+    if (ok) {
+      recordCall("gemini");
+      raw = await callGemini(prompt, geminiKey, "expand-query");
+    }
+  }
+
+  if (!raw) {
+    return { canonicalTerms: baseTerms, category: null };
+  }
+
+  const parsed = parseJSON(raw);
+  if (!parsed) {
+    return { canonicalTerms: baseTerms, category: null };
+  }
+
+  const rawTerms = Array.isArray(parsed.canonical_terms) ? parsed.canonical_terms : [];
+  const expanded = rawTerms
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 1 && t.length < 60);
+
+  // Always include the base terms so we never lose signal.
+  const merged = Array.from(new Set([...baseTerms, ...expanded]));
+
+  const rawCategory = typeof parsed.category === "string" ? parsed.category.trim().toLowerCase() : null;
+  const category = rawCategory && KNOWN_CATEGORIES.includes(rawCategory) ? rawCategory : null;
+
+  return { canonicalTerms: merged, category };
+}
+
+// ── Prompts ─────────────────────────────────────────────────────────────
+
+function buildSummarizePrompt(
+  query: string,
+  curatedBlock: string,
+  scrapedSources: { title: string; excerpt: string }[],
+): string {
+  const scrapedBlock = scrapedSources.length
+    ? scrapedSources
+        .map((s, i) => `[Web ${i + 1}: ${s.title}]\n${s.excerpt}`)
+        .join("\n\n")
+    : "(none)";
+
+  const hasCurated = curatedBlock.trim().length > 0;
+  const curatedSection = hasCurated ? curatedBlock : "(no curated resources matched)";
+
+  return `You are a UC Berkeley student resource assistant. You answer in a concrete, factual, non-generic way. Never invent facts.
+
+Student query: "${query}"
+
+== PRIMARY SOURCES — hand-curated CalConnect resources ==
+These are canonical, verified Berkeley resources. When they contain the answer, prefer them over web excerpts.
+
+${curatedSection}
+
+== SUPPORTING SOURCES — scraped Berkeley web pages ==
+${scrapedBlock}
+
+Return JSON with exactly these keys:
+
+1. "summary": 2-4 sentences that directly answer the student's question using the sources above.
+   - Lead with the single best-matching resource name (e.g. "The Food Pantry offers...").
+   - Include concrete facts: building name, floor, hours, eligibility, cost — but ONLY if present in the sources.
+   - Do NOT start with "Based on...", "According to...", or filler. Just answer.
+   - If the sources do not clearly answer the question, write exactly: "I don't have verified info on this in our directory yet — try the resources below or search a different term."
+
+2. "insights": array of {"label", "value"} objects. Use ONLY these labels when the data is present in the sources:
+   - "Eligibility"
+   - "Hours"
+   - "Location"
+   - "Cost"
+   - "What to bring"
+   - "How to access"
+   - "Contact"
+   - "Deadline"
+   Omit labels with no data. Each value should be 1 short sentence. Do NOT hallucinate missing hours or locations.
+
+3. "action_steps": array of 3-4 concrete steps. Each step must name a specific resource, building, URL, or contact — not generic advice like "contact the office". If the sources don't support a specific action, write "Open the first source below for details" and stop.
+
+Rules:
+- When curated data conflicts with scraped data, trust curated.
+- Do NOT fabricate hours, eligibility rules, URLs, or contact info.
+- Use plain text; no markdown.
 
 Respond with ONLY valid JSON.`;
 }
@@ -391,104 +452,36 @@ Respond with ONLY valid JSON.`;
 function buildKnowledgePrompt(query: string): string {
   return `You are a UC Berkeley student resource assistant. A student searched: "${query}"
 
-Our indexed Berkeley pages didn't have a strong match for this query. Using your knowledge of UC Berkeley campus resources, student services, and the Bay Area:
+Our indexed Berkeley directory has no confident match for this query.
 
-1. Identify the most relevant UC Berkeley offices, programs, or campus resources for this need.
-2. If this is something not covered by a specific Berkeley office, suggest the closest relevant campus resources.
-3. Include real berkeley.edu URLs where possible. For off-campus resources, use real URLs too.
+Using your general knowledge of UC Berkeley campus resources (berkeley.edu domain), provide a best-effort answer. Be explicit about uncertainty — prefer "I'm not sure" over guessing.
 
 Return JSON with:
-1. "summary": 2-4 clear sentences answering the student's need with concrete details. Be specific about Berkeley resources. No preamble.
-2. "insights": Array of {"label", "value"} objects. Use labels: Eligibility, How to access, What to bring, Cost, Hours, Location, Contact as applicable. Keep values concise.
-3. "action_steps": 3-4 specific actionable steps with real office/building names.
-4. "sources": Array of {"title", "url", "snippet"} objects — suggest 2-4 real resource pages that would help. Use real berkeley.edu URLs when possible, but also include other helpful real URLs.
+1. "summary": 2-4 sentences. Start with "Not in our directory, but" if you are answering from general knowledge.
+2. "insights": array of {"label","value"}. Labels: Eligibility, How to access, Hours, Location, Contact, Cost. Include only labels where you are reasonably confident.
+3. "action_steps": 3-4 steps. Name specific Berkeley offices/URLs only if you are confident they exist (e.g. basicneeds.berkeley.edu, caps.berkeley.edu, dsp.berkeley.edu).
+4. "sources": array of {"title","url","snippet"} — 2-4 real berkeley.edu pages. Do NOT invent URLs; only include ones you are confident exist.
 
 Respond with ONLY valid JSON.`;
-}
-
-// ── Perplexity Knowledge Search ─────────────────────────────────────────
-// Uses Sonar's built-in web search for queries our index can't answer.
-// Returns grounded answers with real citations from the live web.
-
-export async function perplexityKnowledgeSearch(query: string): Promise<LLMKnowledgeResult | null> {
-  const pplxKey = getPerplexityKey();
-  if (!pplxKey) return null;
-
-  if (!canCall("perplexity")) {
-    console.log("[LLM] Perplexity rate-limited for knowledge search");
-    return null;
-  }
-
-  const ok = await rateLimitedWait("perplexity");
-  if (!ok) return null;
-
-  const prompt = `A UC Berkeley student needs help with: "${query}"
-
-Search for the most relevant UC Berkeley campus resources, offices, or programs for this need. Focus on berkeley.edu pages and official campus services. If this is something handled off-campus, include those resources too.
-
-Provide a helpful, specific answer with:
-1. A clear 2-4 sentence summary with concrete details (building names, hours, phone numbers, URLs)
-2. Key details about eligibility, how to access the resource, hours, location, and cost
-3. 3-4 specific action steps the student should take
-
-Format your response as JSON with these exact keys:
-- "summary": string (2-4 sentences, no preamble)
-- "insights": array of {"label": string, "value": string} (use labels like Eligibility, How to access, Hours, Location, Contact, Cost)
-- "action_steps": array of strings (3-4 specific steps)
-
-Respond with ONLY valid JSON.`;
-
-  console.log(`[LLM] Perplexity knowledge search for: "${query}"`);
-  recordCall("perplexity");
-
-  const response = await callPerplexityWithCitations(prompt, pplxKey, "knowledge-search");
-  if (!response?.content) return null;
-
-  const parsed = parseJSON(response.content);
-  if (!parsed || typeof parsed.summary !== "string") return null;
-
-  const sources = response.citations.map((url, i) => {
-    let title: string;
-    try {
-      const hostname = new URL(url).hostname.replace(/^www\./, "");
-      const path = new URL(url).pathname.replace(/\/$/, "").split("/").pop() || "";
-      title = path ? `${hostname} — ${path.replace(/-/g, " ")}` : hostname;
-    } catch {
-      title = `Source ${i + 1}`;
-    }
-    return { title, url, snippet: "" };
-  });
-
-  console.log(`[LLM] Perplexity knowledge search success: ${sources.length} citations`);
-
-  return {
-    summary: parsed.summary as string,
-    insights: Array.isArray(parsed.insights)
-      ? (parsed.insights as { label: string; value: string }[]).filter(
-          (i) => i && typeof i === "object" && "label" in i && "value" in i,
-        )
-      : [],
-    action_steps: Array.isArray(parsed.action_steps)
-      ? (parsed.action_steps as string[]).filter((s) => typeof s === "string")
-      : [],
-    sources,
-  };
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
 
 export async function llmSummarize(
   query: string,
-  pageTexts: { title: string; text: string }[],
+  curatedBlock: string,
+  scrapedPageTexts: { title: string; text: string }[],
 ): Promise<LLMSummary | null> {
-  const maxPerPage = pageTexts.length > 3 ? 800 : 1200;
-  const sources = pageTexts.slice(0, 5).map((page) => ({
+  const maxPerPage = scrapedPageTexts.length > 3 ? 800 : 1200;
+  const scrapedSources = scrapedPageTexts.slice(0, 5).map((page) => ({
     title: page.title,
     excerpt: extractRelevantParagraphs(page.text, query, maxPerPage),
   }));
 
-  const prompt = buildSummarizePrompt(query, sources);
-  console.log(`[LLM] Summarize: ${prompt.length} chars (pre-filtered from ${pageTexts.length} pages)...`);
+  const prompt = buildSummarizePrompt(query, curatedBlock, scrapedSources);
+  console.log(
+    `[LLM] Summarize: ${prompt.length} chars (curated=${curatedBlock.length > 0 ? "yes" : "no"}, ${scrapedSources.length} scraped)`,
+  );
 
   const text = await callLLM(prompt, "summarize");
   if (!text) return null;

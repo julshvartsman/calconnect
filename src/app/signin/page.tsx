@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
-import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { EmailSignInForm } from "@/components/email-sign-in-form";
 
 type SignInProps = {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
@@ -15,8 +15,9 @@ function getSafeCallbackUrl(rawCallbackUrl?: string): string {
 }
 
 const errorMessages: Record<string, string> = {
-  not_berkeley: "Sign-in failed. Please use your @berkeley.edu Google account.",
-  oauth_failed: "Google sign-in did not complete. Please try again.",
+  not_berkeley: "Sign-in failed. Please use your @berkeley.edu email.",
+  otp_failed: "That sign-in link is expired or invalid. Please request a new one.",
+  oauth_failed: "Sign-in did not complete. Please try again.",
   server_misconfigured: "Auth is not configured. Please contact an administrator.",
   missing_code: "Sign-in was interrupted. Please try again.",
 };
@@ -36,7 +37,7 @@ export default async function SignInPage({ searchParams }: SignInProps) {
     redirect(callbackUrl);
   }
 
-  const oauthConfigured = isSupabaseConfigured();
+  const authReady = isSupabaseConfigured();
   const errorKey = params.error ?? "";
   const errorMessage = errorMessages[errorKey];
 
@@ -46,7 +47,7 @@ export default async function SignInPage({ searchParams }: SignInProps) {
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--berkeley-blue-700)]">CalConnect</p>
         <h1 className="mt-2 text-3xl font-semibold text-[var(--berkeley-blue)]">Sign in</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Use your Berkeley Google account to continue to Search, Browse, Map, and personalized recommendations.
+          Enter your Berkeley email. We&apos;ll send you a one-click sign-in link.
         </p>
 
         {errorMessage && (
@@ -55,13 +56,13 @@ export default async function SignInPage({ searchParams }: SignInProps) {
           </div>
         )}
 
-        {oauthConfigured ? (
+        {authReady ? (
           <div className="mt-6">
-            <GoogleSignInButton callbackUrl={callbackUrl} />
+            <EmailSignInForm callbackUrl={callbackUrl} />
           </div>
         ) : (
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-medium text-amber-800">Google sign-in is not configured yet.</p>
+            <p className="text-sm font-medium text-amber-800">Sign-in is not configured yet.</p>
             <p className="mt-1 text-xs text-amber-700">
               An administrator needs to set <code className="rounded bg-amber-100 px-1">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
               <code className="rounded bg-amber-100 px-1">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
@@ -70,7 +71,7 @@ export default async function SignInPage({ searchParams }: SignInProps) {
         )}
 
         <p className="mt-6 text-center text-xs text-slate-500">
-          After sign-in, you will continue to your requested page.
+          Only <strong>@berkeley.edu</strong> emails are allowed.
         </p>
       </section>
     </main>

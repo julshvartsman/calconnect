@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { inferRoleFromEmail } from "@/lib/roles";
 import { isBerkeleyEmail } from "@/lib/auth";
@@ -13,15 +14,36 @@ function getSafeNext(rawNext?: string | null): string {
   return rawNext;
 }
 
+const VALID_OTP_TYPES: ReadonlySet<EmailOtpType> = new Set<EmailOtpType>([
+  "signup",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+  "email",
+]);
+
+function parseOtpType(raw: string | null): EmailOtpType | null {
+  if (!raw) return null;
+  return VALID_OTP_TYPES.has(raw as EmailOtpType) ? (raw as EmailOtpType) : null;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const tokenHash = url.searchParams.get("token_hash");
+  const otpType = parseOtpType(url.searchParams.get("type"));
   const next = getSafeNext(url.searchParams.get("next"));
-  const errorParam = url.searchParams.get("error");
+  const errorParam = url.searchParams.get("error") ?? url.searchParams.get("error_code");
 
-  if (errorParam || !code) {
-    const reason = errorParam ?? "missing_code";
-    return NextResponse.redirect(new URL(`/signin?error=${encodeURIComponent(reason)}`, url.origin));
+  if (errorParam) {
+    return NextResponse.redirect(
+      new URL(`/signin?error=${encodeURIComponent(errorParam)}`, url.origin),
+    );
+  }
+
+  if (!code && !(tokenHash && otpType)) {
+    return NextResponse.redirect(new URL("/signin?error=missing_code", url.origin));
   }
 
   let supabase;
@@ -32,10 +54,21 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/signin?error=server_misconfigured", url.origin));
   }
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-  if (exchangeError) {
-    console.error("[Auth] exchangeCodeForSession failed", exchangeError);
-    return NextResponse.redirect(new URL("/signin?error=oauth_failed", url.origin));
+  if (code) {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    if (exchangeError) {
+      console.error("[Auth] exchangeCodeForSession failed", exchangeError);
+      return NextResponse.redirect(new URL("/signin?error=oauth_failed", url.origin));
+    }
+  } else if (tokenHash && otpType) {
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: otpType,
+    });
+    if (verifyError) {
+      console.error("[Auth] verifyOtp failed", verifyError);
+      return NextResponse.redirect(new URL("/signin?error=otp_failed", url.origin));
+    }
   }
 
   const { data } = await supabase.auth.getUser();

@@ -168,6 +168,7 @@ model SearchEvent {
   queryKey      String
   anonymousId   String
   sessionId     String
+  userEmail     String?
   path          String?
   resultCount   Int?
   durationMs    Int?
@@ -182,4 +183,5 @@ model SearchEvent {
   @@index([eventType, createdAt])
   @@index([queryKey, createdAt])
   @@index([anonymousId, createdAt])
+  @@index([userEmail, createdAt])
 }

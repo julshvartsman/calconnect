@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       queryKey,
       anonymousId: event.anonymousId,
       sessionId: event.sessionId,
+      userEmail: session.user.email,
       path: event.path,
       resultCount: event.resultCount,
       durationMs: event.durationMs,

@@ -2,6 +2,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CATEGORY_LABELS } from "@/lib/berkeley-sources";
 import {
+  BERKELEY_GUIDE_URL,
+  COLLEGE_ADVISING,
+  detectAdvisingIntent,
+  resolveMajor,
+  type MajorDept,
+} from "@/lib/berkeley-majors";
+import {
   expandQuery,
   isLLMAvailable,
   llmKnowledgeFallback,
@@ -430,6 +437,67 @@ function formatCuratedBlock(matches: CuratedMatch[]): string {
     .join("\n\n");
 }
 
+// ── Department advising resolver ────────────────────────────────────────
+// When a user asks about advising/declaring/prereqs for a specific major
+// that we don't have a curated Resource row for, we still want to resolve
+// them to the right department page. We synthesize a high-confidence entry
+// from `berkeley-majors.ts` and feed it through the normal pipeline.
+
+type DepartmentEntry = {
+  title: string;
+  url: string;
+  snippet: string;
+  blockText: string;
+};
+
+function buildDepartmentEntry(dept: MajorDept): DepartmentEntry {
+  const targetUrl = dept.advisingUrl ?? dept.website;
+  const collegeLink = COLLEGE_ADVISING[dept.college];
+
+  const lines: string[] = [];
+  lines.push(`[Department: ${dept.name}]`);
+  lines.push(`Type: Academic department / major advising`);
+  lines.push(`College: ${dept.college}`);
+  lines.push(`Department website: ${dept.website}`);
+  if (dept.advisingUrl) lines.push(`Advising page: ${dept.advisingUrl}`);
+  lines.push(`College advising hub: ${collegeLink.name} — ${collegeLink.url}`);
+  lines.push(
+    `Notes: Undergraduate advising for the ${dept.name} major is handled by the department's ` +
+      `undergraduate advising office. Advisor names, office hours, drop-in windows, and appointment ` +
+      `booking are listed on the department website. For college-wide questions (declaring the major, ` +
+      `transfer credit, graduation), use the ${dept.college} advising hub above.`,
+  );
+
+  return {
+    title: `${dept.name} — Undergraduate Advising`,
+    url: targetUrl,
+    snippet: `Official ${dept.name} department page for Berkeley undergraduates, including advising contacts and office hours.`,
+    blockText: lines.join("\n"),
+  };
+}
+
+function buildGenericAdvisingEntry(): DepartmentEntry {
+  const lines: string[] = [];
+  lines.push(`[Reference: UC Berkeley Academic Guide]`);
+  lines.push(`Website: ${BERKELEY_GUIDE_URL}`);
+  lines.push(
+    `Notes: Every undergraduate major at UC Berkeley lists its department website, ` +
+      `advising contacts, requirements, and prerequisites on the Berkeley Academic Guide. ` +
+      `Students should look up their specific major in the guide, then click through to the ` +
+      `department's own undergraduate advising page.`,
+  );
+  for (const college of Object.values(COLLEGE_ADVISING)) {
+    lines.push(`College advising: ${college.name} — ${college.url}`);
+  }
+
+  return {
+    title: "UC Berkeley Academic Guide — Undergraduate Programs",
+    url: BERKELEY_GUIDE_URL,
+    snippet: "Directory of every Berkeley undergraduate major with department sites and advising contacts.",
+    blockText: lines.join("\n"),
+  };
+}
+
 // ── Extractive fallbacks (used when LLM is unavailable or fails) ────────
 
 function scoreSentence(sentence: string, queryTerms: string[]): number {
@@ -593,6 +661,24 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
     `[AgentSearch] Query="${query}" terms=[${retrievalTerms.join(", ")}] category=${expansion.category ?? "null"}`,
   );
 
+  // 2b. Department / major resolver. Runs in parallel with retrieval because
+  //     it's just a lookup against a static map.
+  const advisingIntent = detectAdvisingIntent(retrievalTerms, query);
+  const resolvedMajor = resolveMajor(query);
+  let departmentEntry: DepartmentEntry | null = null;
+  if (resolvedMajor) {
+    // Any time we can pin down a major, lead with its department page.
+    departmentEntry = buildDepartmentEntry(resolvedMajor);
+  } else if (advisingIntent) {
+    // Advising-shaped query with no identifiable major → give them the guide.
+    departmentEntry = buildGenericAdvisingEntry();
+  }
+  if (departmentEntry) {
+    console.log(
+      `[AgentSearch] Department entry: ${departmentEntry.title} (major=${resolvedMajor?.name ?? "none"}, advisingIntent=${advisingIntent})`,
+    );
+  }
+
   // 3. Retrieval over scraped pages and curated resources (in parallel)
   const [pages, curatedMatches] = await Promise.all([
     findRelevantPages(retrievalTerms),
@@ -604,7 +690,10 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
 
   const haveConfidentCurated = topCuratedScore >= MIN_CURATED_SCORE_CONFIDENT;
   const haveConfidentScraped = topScrapedScore >= MIN_SCRAPED_SCORE_CONFIDENT;
-  const hasLocalResults = pages.length > 0 || curatedMatches.length > 0;
+  // A resolved department is as strong as a curated match — a pinned URL we
+  // trust, so treat it the same way for gating and onboarding.
+  const haveDepartment = departmentEntry !== null && resolvedMajor !== null;
+  const hasLocalResults = pages.length > 0 || curatedMatches.length > 0 || haveDepartment;
 
   // 4. If we have zero data anywhere, emit a helpful onboarding message
   if (!hasLocalResults) {
@@ -629,9 +718,10 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
   }
 
   // 5. Decide whether to use the general-knowledge fallback
-  // We only fall back when BOTH curated and scraped retrieval are weak — a
-  // confident curated match alone is enough to answer directly.
-  const shouldFallback = !haveConfidentCurated && !haveConfidentScraped && isLLMAvailable();
+  // We only fall back when curated, scraped, and department retrieval are all
+  // weak — any confident match alone is enough to answer directly.
+  const shouldFallback =
+    !haveConfidentCurated && !haveConfidentScraped && !haveDepartment && isLLMAvailable();
 
   let knowledge: import("@/lib/llm-summarize").LLMKnowledgeResult | null = null;
   if (shouldFallback) {
@@ -659,9 +749,21 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
     };
   }
 
-  // 7. Build the source list the UI renders — curated first, then scraped, then knowledge
+  // 7. Build the source list the UI renders — department first (if we
+  //    resolved a specific major page), then curated, then scraped, then
+  //    knowledge fallback web sources.
   const sources: AgentSearchResult["sources"] = [];
   const seenUrls = new Set<string>();
+
+  if (departmentEntry) {
+    sources.push({
+      title: departmentEntry.title,
+      url: departmentEntry.url,
+      snippet: departmentEntry.snippet,
+      category: "Academic advising",
+    });
+    seenUrls.add(departmentEntry.url);
+  }
 
   for (const cr of curatedMatches) {
     const url = cr.websiteUrl ?? `/resources/${cr.id}`;
@@ -696,7 +798,12 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
 
   // 8. Build the LLM context. Curated data is its own block — it is NEVER
   //    crowded out by scraped excerpts, which is the #1 former weakness.
-  const curatedBlock = formatCuratedBlock(curatedMatches);
+  //    Department entries count as curated for prompting purposes.
+  const curatedSections: string[] = [];
+  if (departmentEntry) curatedSections.push(departmentEntry.blockText);
+  const curatedMatchesBlock = formatCuratedBlock(curatedMatches);
+  if (curatedMatchesBlock) curatedSections.push(curatedMatchesBlock);
+  const curatedBlock = curatedSections.join("\n\n");
   const scrapedTexts = pages.map((p) => ({ title: p.title, text: p.bodyText }));
 
   // 9. Summarize. If the LLM is up, use it; otherwise extract.
@@ -714,6 +821,22 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
     summary = knowledge.summary;
     insights = knowledge.insights;
     actionSteps = knowledge.action_steps;
+  } else if (departmentEntry && resolvedMajor && curatedMatches.length === 0 && pages.length === 0) {
+    // LLM unavailable but we have a resolved department — return a
+    // deterministic, useful answer pointing at the department page.
+    const collegeLink = COLLEGE_ADVISING[resolvedMajor.college];
+    summary =
+      `Undergraduate advising for the ${resolvedMajor.name} major is run by the department. ` +
+      `Advisor contacts, office hours, and drop-in windows are on the department's advising page.`;
+    insights = [
+      { label: "Department", value: resolvedMajor.name },
+      { label: "College", value: collegeLink.name },
+    ];
+    actionSteps = [
+      `Open the ${resolvedMajor.name} advising page: ${departmentEntry.url}`,
+      `If you need college-wide help (declaring, transfer credit, graduation), use ${collegeLink.url}`,
+      "Email or book an appointment with the listed undergraduate advisor.",
+    ];
   } else {
     summary = buildExtractiveSummary(curatedMatches, pages, retrievalTerms);
     insights = buildExtractiveInsights(curatedMatches, pages);

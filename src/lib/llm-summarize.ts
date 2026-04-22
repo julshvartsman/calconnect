@@ -413,7 +413,7 @@ function buildSummarizePrompt(
 Student query: "${query}"
 
 == PRIMARY SOURCES — hand-curated CalConnect resources ==
-These are canonical, verified Berkeley resources. When they contain the answer, prefer them over web excerpts.
+These are canonical, verified Berkeley resources. When they contain the answer, prefer them over web excerpts. Entries labeled [Department: ...] are the official UC Berkeley department pages for academic majors — treat them as authoritative for questions about that major's advising, prerequisites, declaring, or faculty. When answering a question about a specific major, lead with the department name and link to its website/advising page.
 
 ${curatedSection}
 

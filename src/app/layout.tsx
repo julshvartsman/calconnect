@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import { SiteNav } from "@/components/site-nav";
+import { OnboardingBanner } from "@/components/onboarding-banner";
 
 const fontSans = DM_Sans({
   subsets: ["latin"],
@@ -31,6 +33,11 @@ export default function RootLayout({
     <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable}`}>
       <body className={`${fontSans.className} antialiased`}>
         <SiteNav />
+        <Suspense fallback={null}>
+          {/* Server-rendered: only appears for authenticated users whose
+              onboarding survey is incomplete. */}
+          <OnboardingBanner />
+        </Suspense>
         {children}
       </body>
     </html>

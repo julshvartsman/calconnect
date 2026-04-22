@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CATEGORY_LABELS } from "@/lib/berkeley-sources";
+import { profileToVirtualQueries } from "@/lib/onboarding";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Personalized recommendations — computed from a user's actual DB-backed
@@ -144,16 +145,33 @@ export async function getRecommendationsForEmail(
     });
   } catch (error) {
     console.error("[Recommendations] Failed to load search history", error);
-    return { items: [], basedOn: [] };
   }
 
-  if (events.length === 0) {
-    return { items: [], basedOn: [] };
+  // 1b. Also pull the onboarding profile — its `topics` and `identities`
+  //     become synthetic "virtual queries" that score lower than real
+  //     searches but bootstrap recommendations from day one (before the
+  //     user has searched anything).
+  let virtualQueries: string[] = [];
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { profile: { select: { profileJson: true } } },
+    });
+    virtualQueries = profileToVirtualQueries(user?.profile?.profileJson);
+  } catch (error) {
+    console.error("[Recommendations] Failed to load onboarding profile", error);
   }
 
-  // 2. De-duplicate by queryKey, keep most recent instance (query text).
+  // 2. Merge: real queries first (recency-decayed), virtual queries appended
+  //    at the end so they end up with lower weight.
   const seenKeys = new Set<string>();
-  const orderedQueries: { query: string; queryKey: string; tokens: string[] }[] = [];
+  const orderedQueries: {
+    query: string;
+    queryKey: string;
+    tokens: string[];
+    source: "search" | "profile";
+  }[] = [];
+
   for (const ev of events) {
     if (seenKeys.has(ev.queryKey)) continue;
     seenKeys.add(ev.queryKey);
@@ -161,11 +179,28 @@ export async function getRecommendationsForEmail(
       query: ev.query,
       queryKey: ev.queryKey,
       tokens: tokenize(ev.query),
+      source: "search",
     });
     if (orderedQueries.length >= MAX_HISTORY_QUERIES) break;
   }
 
-  const basedOn = orderedQueries.map((q) => q.query);
+  for (const vq of virtualQueries) {
+    const key = vq.toLowerCase();
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    orderedQueries.push({
+      query: vq,
+      queryKey: key,
+      tokens: tokenize(vq),
+      source: "profile",
+    });
+  }
+
+  if (orderedQueries.length === 0) {
+    return { items: [], basedOn: [] };
+  }
+
+  const basedOn = orderedQueries.filter((q) => q.source === "search").map((q) => q.query);
 
   // 3. Fetch active resources (small catalog — no need to paginate yet).
   let resources: ScorableResource[] = [];
@@ -210,9 +245,12 @@ export async function getRecommendationsForEmail(
     bagById.set(resource.id, { resource, totalScore: 0, matches: [] });
   }
 
-  orderedQueries.forEach(({ query, tokens }, idx) => {
-    // Linear recency decay: newest query 1.0x, oldest ~0.3x
-    const recencyWeight = 1 - (idx / orderedQueries.length) * 0.7;
+  orderedQueries.forEach(({ query, tokens, source }, idx) => {
+    // Real-search queries get recency decay (newest 1.0x, oldest ~0.3x).
+    // Profile-derived "virtual" queries get a flat 0.5x — they're useful
+    // signal but should always lose to what the user actually searched.
+    const recencyWeight =
+      source === "profile" ? 0.5 : 1 - (idx / orderedQueries.length) * 0.7;
     for (const resource of resources) {
       const raw = scoreResourceAgainstTokens(resource, tokens);
       if (raw <= 0) continue;

@@ -2,6 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  FINANCIAL_OPTIONS,
+  IDENTITY_OPTIONS,
+  TOPIC_OPTIONS,
+  YEAR_OPTIONS,
+  isOnboardingComplete,
+  type OnboardingProfile,
+} from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -83,15 +91,39 @@ export default async function ProfilePage() {
 
   const email = session.user.email;
 
-  let user: { name: string | null; role: string; createdAt: Date } | null = null;
+  let user: {
+    name: string | null;
+    role: string;
+    createdAt: Date;
+    profile: { profileJson: unknown } | null;
+  } | null = null;
   try {
     user = await prisma.user.findUnique({
       where: { email },
-      select: { name: true, role: true, createdAt: true },
+      select: {
+        name: true,
+        role: true,
+        createdAt: true,
+        profile: { select: { profileJson: true } },
+      },
     });
   } catch (error) {
     console.error("[Profile] Failed to load user", error);
   }
+
+  const onboarding: OnboardingProfile | null =
+    user?.profile?.profileJson && typeof user.profile.profileJson === "object"
+      ? (user.profile.profileJson as OnboardingProfile)
+      : null;
+  const hasOnboarding = isOnboardingComplete(onboarding);
+
+  const yearLabel = YEAR_OPTIONS.find((o) => o.value === onboarding?.year)?.label ?? null;
+  const topicLabels =
+    onboarding?.topics?.map((v) => TOPIC_OPTIONS.find((o) => o.value === v)?.label ?? v) ?? [];
+  const identityLabels =
+    onboarding?.identities?.map((v) => IDENTITY_OPTIONS.find((o) => o.value === v)?.label ?? v) ?? [];
+  const financialLabel =
+    FINANCIAL_OPTIONS.find((o) => o.value === onboarding?.financialSituation)?.label ?? null;
 
   const displayName = user?.name ?? session.user.name ?? email.split("@")[0];
   const role = user?.role ?? session.user.role ?? "student";
@@ -141,6 +173,85 @@ export default async function ProfilePage() {
             </>
           )}
         </dl>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Your preferences
+          </h2>
+          <Link
+            href="/onboarding?next=/profile"
+            className="text-xs font-medium text-[var(--berkeley-blue)] hover:underline"
+          >
+            {hasOnboarding ? "Edit →" : "Set up →"}
+          </Link>
+        </div>
+
+        {!hasOnboarding ? (
+          <div className="mt-4 rounded-lg border border-dashed border-[var(--california-gold)]/50 bg-[var(--california-gold)]/5 p-5 text-center">
+            <p className="text-sm font-medium text-slate-800">
+              Finish your profile to get personalized recommendations.
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              A 60-second survey about your year and interests powers the &quot;For You&quot; feed.
+            </p>
+            <Link
+              href="/onboarding?next=/profile"
+              className="mt-3 inline-block rounded-lg bg-[var(--berkeley-blue)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--berkeley-blue-700)]"
+            >
+              Start the 1-minute survey
+            </Link>
+          </div>
+        ) : (
+          <dl className="mt-3 grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-[140px_1fr]">
+            {yearLabel && (
+              <>
+                <dt className="font-medium text-slate-500">Year</dt>
+                <dd className="text-slate-900">{yearLabel}</dd>
+              </>
+            )}
+
+            {topicLabels.length > 0 && (
+              <>
+                <dt className="font-medium text-slate-500">Interests</dt>
+                <dd className="flex flex-wrap gap-1.5">
+                  {topicLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center rounded-full bg-[var(--berkeley-blue)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--berkeley-blue)]"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </dd>
+              </>
+            )}
+
+            {identityLabels.length > 0 && (
+              <>
+                <dt className="font-medium text-slate-500">About you</dt>
+                <dd className="flex flex-wrap gap-1.5">
+                  {identityLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </dd>
+              </>
+            )}
+
+            {financialLabel && (
+              <>
+                <dt className="font-medium text-slate-500">Financial</dt>
+                <dd className="text-slate-900">{financialLabel}</dd>
+              </>
+            )}
+          </dl>
+        )}
       </section>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

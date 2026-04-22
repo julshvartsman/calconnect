@@ -27,7 +27,15 @@ export async function auth(): Promise<AppSession> {
   try {
     supabase = await getSupabaseServerClient();
   } catch (error) {
-    console.error("[Auth] Failed to create Supabase server client", error);
+    // Next.js probes each route for static renderability at build time by
+    // running the server component without request context. Reading cookies
+    // in that probe throws DYNAMIC_SERVER_USAGE, which Next then handles by
+    // marking the route dynamic — the expected outcome. Don't pollute logs
+    // with it; only log unexpected failures.
+    const digest = (error as { digest?: string } | null)?.digest;
+    if (digest !== "DYNAMIC_SERVER_USAGE") {
+      console.error("[Auth] Failed to create Supabase server client", error);
+    }
     return null;
   }
 

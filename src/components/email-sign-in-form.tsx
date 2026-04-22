@@ -11,6 +11,22 @@ function isBerkeleyEmail(email: string): boolean {
   return /^[^\s@]+@berkeley\.edu$/i.test(email.trim());
 }
 
+/**
+ * Translate Supabase auth error strings into something users can act on.
+ * Supabase's built-in SMTP caps at ~4 emails/hr — a real user will hit
+ * this in a beta and needs to know what to do.
+ */
+function friendlyAuthError(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("rate limit") || lower.includes("429") || lower.includes("too many")) {
+    return "Too many sign-in emails in a short window. Please wait a few minutes and try again. If this keeps happening, ask an admin to enable custom SMTP in Supabase.";
+  }
+  if (lower.includes("invalid email") || lower.includes("not allowed")) {
+    return "That email address was rejected. Make sure you're using your @berkeley.edu address.";
+  }
+  return message;
+}
+
 export function EmailSignInForm({ callbackUrl }: Props) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -38,7 +54,7 @@ export function EmailSignInForm({ callbackUrl }: Props) {
         },
       });
       if (otpError) {
-        setError(otpError.message);
+        setError(friendlyAuthError(otpError.message));
         setStatus("error");
         return;
       }

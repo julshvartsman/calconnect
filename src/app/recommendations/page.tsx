@@ -18,7 +18,7 @@ export default function RecommendationsPage() {
             Recommended for you
           </h1>
           <p className="mt-2 max-w-lg text-sm text-white/45">
-            Resources curated from your recent searches. Tap any card to see eligibility and next steps.
+            Resources chosen from your recent searches. Each card shows which of your past queries it matched.
           </p>
         </div>
       </section>

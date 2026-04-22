@@ -8,6 +8,7 @@ import {
   resolveMajor,
   type MajorDept,
 } from "@/lib/berkeley-majors";
+import { matchTopicHubs } from "@/lib/berkeley-topics";
 import {
   expandQuery,
   isLLMAvailable,
@@ -720,8 +721,9 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
   // 5. Decide whether to use the general-knowledge fallback
   // We only fall back when curated, scraped, and department retrieval are all
   // weak — any confident match alone is enough to answer directly.
+  const llmReady = isLLMAvailable();
   const shouldFallback =
-    !haveConfidentCurated && !haveConfidentScraped && !haveDepartment && isLLMAvailable();
+    !haveConfidentCurated && !haveConfidentScraped && !haveDepartment && llmReady;
 
   let knowledge: import("@/lib/llm-summarize").LLMKnowledgeResult | null = null;
   if (shouldFallback) {
@@ -729,10 +731,57 @@ export async function runAgentSearch(query: string): Promise<AgentSearchResult> 
       `[AgentSearch] No confident local match (curated=${topCuratedScore}, scraped=${topScrapedScore}); using general-knowledge fallback`,
     );
     knowledge = await llmKnowledgeFallback(query);
+    if (!knowledge) {
+      console.warn(
+        `[AgentSearch] Knowledge fallback returned null for "${query}" — rate-limit or provider error`,
+      );
+    }
+  } else if (!haveConfidentCurated && !haveConfidentScraped && !haveDepartment && !llmReady) {
+    console.warn(
+      `[AgentSearch] No local match for "${query}" and LLM is unavailable (missing GEMINI_API_KEY/GROQ_API_KEY?). Falling back to topic hubs.`,
+    );
   }
 
-  // 6. Nothing at all: generic fallback with a couple of anchor links
+  // 6. Nothing at all: use the topic-hub map as a last-resort structured
+  //    answer. This path is hit when:
+  //    - retrieval returned nothing confident,
+  //    - no department matched,
+  //    - AND the LLM knowledge fallback was unavailable or failed.
+  //    We'd rather show the user the right office than "No results".
   if (!hasLocalResults && !knowledge) {
+    const topicHubs = matchTopicHubs(query, 3);
+    if (topicHubs.length > 0) {
+      const primary = topicHubs[0];
+      const summary =
+        `We don't have a curated answer for "${query}" yet, but this looks like a ${primary.label.toLowerCase()} question. ` +
+        primary.hint;
+      return {
+        query,
+        summary,
+        action_steps: [
+          `Open ${primary.label}: ${primary.url}`,
+          ...topicHubs.slice(1).map((h) => `For related help, try ${h.label}: ${h.url}`),
+          "If none of these fit, try rephrasing with more specific keywords.",
+        ],
+        insights: [
+          { label: "Best place to start", value: primary.label },
+        ],
+        sources: topicHubs.map((h) => ({
+          title: h.label,
+          url: h.url,
+          snippet: h.description,
+          category: "Official Berkeley",
+        })),
+        meta: {
+          sourceCount: topicHubs.length,
+          cached: false,
+          durationMs: Date.now() - start,
+          scrapedAt: new Date().toISOString(),
+        },
+      };
+    }
+
+    // Absolute last resort: two broad anchor links.
     return {
       query,
       summary: `No Berkeley resources matched "${query}". Try different keywords or browse by category.`,

@@ -54,8 +54,19 @@ export async function GET(request: NextRequest) {
   // Capture the user (if any) BEFORE running the search so we can persist
   // the event with their email. If there's no session we still serve the
   // search, but the event just won't be attributed to a user.
-  const session = await auth().catch(() => null);
-  const userEmail = session?.user?.email ?? null;
+  let userEmail: string | null = null;
+  try {
+    const session = await auth();
+    userEmail = session?.user?.email ?? null;
+    if (!userEmail) {
+      console.warn("[CrewSearch] No authenticated user — search event will not be recorded.");
+    }
+  } catch (err) {
+    console.error(
+      "[CrewSearch] auth() threw — search event will not be recorded:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   try {
     const result = await runAgentSearch(query);
@@ -63,11 +74,14 @@ export async function GET(request: NextRequest) {
     // Persist the search event server-side. This is the authoritative record
     // — client-side `trackSearchEvent` is unreliable (keepalive + rapid
     // navigation can drop the request, and any auth hiccup makes it 401).
+    // We `await` the write so failures show up in logs with a stack. The
+    // response still lands in ~ms because Prisma is fast; if it ever becomes
+    // a bottleneck we'll move this to a non-awaited task.
     if (userEmail) {
       const safeQuery = redactPii(query);
       const queryKey = buildQueryKey(safeQuery);
-      prisma.searchEvent
-        .create({
+      try {
+        await prisma.searchEvent.create({
           data: {
             eventType: "search_submitted",
             query: safeQuery,
@@ -81,10 +95,19 @@ export async function GET(request: NextRequest) {
             cached: result.meta.cached,
             success: true,
           },
-        })
-        .catch((err) => {
-          console.warn("[CrewSearch] Failed to record search event:", err instanceof Error ? err.message : err);
         });
+        console.log(
+          `[CrewSearch] Recorded search_submitted for ${userEmail}: "${safeQuery}" (${result.sources.length} sources, ${result.meta.durationMs}ms)`,
+        );
+      } catch (err) {
+        // Most likely cause on Vercel: the userEmail migration hasn't applied
+        // yet, so the column doesn't exist on `SearchEvent`. Log loudly so
+        // this is visible in Vercel runtime logs.
+        console.error(
+          "[CrewSearch] Failed to record search event. If this says 'column \"userEmail\" does not exist', run `prisma migrate deploy` or redeploy to apply migrations:",
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     return NextResponse.json(result, { status: 200 });
